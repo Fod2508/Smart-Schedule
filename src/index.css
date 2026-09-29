@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  }
+  
+  /* Custom thin scrollbars for calendar grid */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(156, 163, 175, 0.4);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(156, 163, 175, 0.7);
+  }
+}
+
+@keyframes conflict-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.45);
+    border-color: rgba(239, 68, 68, 0.85);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.15);
+    border-color: rgba(244, 63, 94, 0.6);
+  }
+}
+
+.conflict-pulse {
+  animation: conflict-pulse 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+

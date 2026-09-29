@@ -1,0 +1,7 @@
+{
+  "name": "Smart Schedule",
+  "description": "Trợ lý xếp thời khóa biểu thông minh tự động hóa với Gemini AI và Google Workspace.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

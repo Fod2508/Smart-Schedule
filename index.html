@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      (function() {
+        try {
+          var origDefine = Object.defineProperty;
+          Object.defineProperty = function(target, prop, desc) {
+            if (
+              (target === window ||
+                target === (typeof globalThis !== 'undefined' ? globalThis : null) ||
+                target === (typeof Window !== 'undefined' ? Window.prototype : null) ||
+                target === (typeof self !== 'undefined' ? self : null)) &&
+              prop === 'fetch' &&
+              desc
+            ) {
+              var _val;
+              var origGet = desc.get;
+              desc.configurable = true;
+              desc.enumerable = true;
+              desc.get = function() {
+                return _val !== undefined ? _val : (origGet ? origGet.call(this) : undefined);
+              };
+              desc.set = function(newVal) {
+                _val = newVal;
+              };
+            }
+            return origDefine.call(Object, target, prop, desc);
+          };
+        } catch (hookErr) {}
+
+        var isFetchGetterError = function(errOrMsg) {
+          if (!errOrMsg) return false;
+          var str = '';
+          try {
+            if (typeof errOrMsg === 'string') {
+              str = errOrMsg;
+            } else if (errOrMsg.message) {
+              str = errOrMsg.message;
+            } else if (errOrMsg.reason) {
+              str = String(errOrMsg.reason.message || errOrMsg.reason);
+            } else {
+              str = String(errOrMsg);
+            }
+          } catch (e) {
+            return false;
+          }
+          str = str.toLowerCase();
+          return str.indexOf('fetch') !== -1 && (str.indexOf('getter') !== -1 || str.indexOf('read-only') !== -1 || str.indexOf('readonly') !== -1 || str.indexOf('cannot set property') !== -1);
+        };
+
+        try {
+          var origConsoleError = console.error;
+          console.error = function() {
+            var args = [].slice.call(arguments);
+            for (var idx = 0; idx !== args.length; idx++) {
+              if (isFetchGetterError(args[idx])) return;
+            }
+            return origConsoleError.apply(console, args);
+          };
+        } catch (ceErr) {}
+
+        window.addEventListener('error', function(event) {
+          if (event && (isFetchGetterError(event.message) || isFetchGetterError(event.error))) {
+            event.preventDefault();
+            if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+            return true;
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(event) {
+          if (event && (isFetchGetterError(event.reason) || (event.reason && isFetchGetterError(event.reason.message)))) {
+            event.preventDefault();
+            if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+            return true;
+          }
+        }, true);
+
+        var origOnError = window.onerror;
+        window.onerror = function(msg, source, lineno, colno, error) {
+          if (isFetchGetterError(msg) || isFetchGetterError(error)) {
+            return true;
+          }
+          if (typeof origOnError === 'function') {
+            return origOnError.apply(this, arguments);
+          }
+        };
+
+        try {
+          var origFetch = window.fetch;
+          var activeFetch = origFetch;
+          if (typeof origFetch === 'function') {
+            try {
+              activeFetch = origFetch.bind(window);
+            } catch (e) {}
+          }
+
+          var patchObject = function(obj) {
+            if (!obj) return;
+            try {
+              var desc = Object.getOwnPropertyDescriptor(obj, 'fetch');
+              if (desc && desc.configurable) {
+                try { delete obj.fetch; } catch (e) {}
+              }
+              Object.defineProperty(obj, 'fetch', {
+                get: function() { return activeFetch; },
+                set: function(v) { activeFetch = v; },
+                configurable: true,
+                enumerable: true
+              });
+            } catch (err1) {
+              try {
+                Object.defineProperty(obj, 'fetch', {
+                  value: activeFetch,
+                  writable: true,
+                  configurable: true,
+                  enumerable: true
+                });
+              } catch (err2) {}
+            }
+          };
+
+          patchObject(window);
+          if (typeof globalThis !== 'undefined' && globalThis !== window) patchObject(globalThis);
+          if (typeof self !== 'undefined' && self !== window) patchObject(self);
+          if (typeof Window !== 'undefined' && Window.prototype) patchObject(Window.prototype);
+
+          var proto = Object.getPrototypeOf(window);
+          while (proto && proto !== Object.prototype) {
+            patchObject(proto);
+            proto = Object.getPrototypeOf(proto);
+          }
+        } catch (globalErr) {}
+      })();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart Schedule</title>
+    <meta name="description" content="Trợ lý xếp thời khóa biểu thông minh tự động hóa với Gemini AI và Google Workspace." />
+    <meta name="theme-color" content="#4f46e5" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta property="og:title" content="Smart Schedule" />
+    <meta property="og:description" content="Trợ lý xếp thời khóa biểu thông minh tự động hóa với Gemini AI và Google Workspace." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  </head>
+  <body class="bg-zinc-100 text-zinc-900 antialiased font-sans transition-colors duration-200">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (var reg of registrations) {
+            reg.unregister();
+          }
+        }).catch(function() {});
+      }
+    </script>
+  </body>
+</html>
+
