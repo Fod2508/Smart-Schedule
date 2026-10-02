@@ -1,11 +1,10 @@
 {
-  "projectId": "gen-lang-client-0723322986",
-  "appId": "1:860684745196:web:443ab7404e8ace13d0a8c9",
-  "apiKey": "AIzaSyACsOVqmJX_qLQs8vyZDqyAG9mz3KACrIA",
-  "authDomain": "gen-lang-client-0723322986.firebaseapp.com",
-  "storageBucket": "gen-lang-client-0723322986.firebasestorage.app",
-  "messagingSenderId": "860684745196",
-  "measurementId": "",
-  "oAuthClientId": "860684745196-4jkva2bajj508l97hc6k09lqg910th69.apps.googleusercontent.com",
-  "recaptchaSiteKey": ""
+  "projectId": "smart-schedule-edb6f",
+  "appId": "1:739196323504:web:a428e994f77b0ad26d1d75",
+  "apiKey": "AIzaSyDKbwBIRlHtARvU9TA4cdfMphs5EzjgM1s",
+  "authDomain": "smart-schedule-edb6f.firebaseapp.com",
+  "storageBucket": "smart-schedule-edb6f.firebasestorage.app",
+  "messagingSenderId": "739196323504",
+  "measurementId": "G-7EEJM202L8",
+  "oAuthClientId": "739196323504-nmahueljgce7nbu2s6oerr7lj3b0ohjr.apps.googleusercontent.com"
 }

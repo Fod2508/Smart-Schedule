@@ -1,11 +1,17 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { User } from 'firebase/auth';
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
+import { User } from "firebase/auth";
 import {
   initAuth,
   googleSignIn,
   logout,
   getAccessToken,
-} from './services/firebase';
+} from "./services/firebase";
 import {
   ScheduleItem,
   GoogleCalendar,
@@ -16,69 +22,86 @@ import {
   TemplateData,
   UserPersona,
   Chronotype,
-} from './types/schedule';
+} from "./types/schedule";
 import {
   listGoogleCalendars,
   listCalendarEvents,
   createGoogleCalendarEvent,
   updateGoogleCalendarEvent,
   deleteGoogleCalendarEvent,
-} from './services/calendarApi';
+} from "./services/calendarApi";
 import {
   listTaskLists,
   listGoogleTasks,
   createGoogleTask,
   markGoogleTaskCompleted,
-} from './services/tasksApi';
+} from "./services/tasksApi";
 import {
   loadLocalSchedule,
   saveLocalSchedule,
   loadUserProfile,
   saveUserProfile,
   DEFAULT_USER_PROFILE,
-} from './services/storage';
-import { TEMPLATE_LIBRARY } from './data/templateLibrary';
+} from "./services/storage";
+import {
+  saveEventsToFirestore,
+  loadEventsFromFirestore,
+  saveProfileToFirestore,
+  loadProfileFromFirestore,
+  subscribeToEvents,
+} from "./services/firestoreService";
+import { TEMPLATE_LIBRARY } from "./data/templateLibrary";
 
 // UI Components
-import { Navbar } from './components/Navbar';
-import { CalendarGrid } from './components/CalendarGrid';
-import { NaturalLanguageInput } from './components/NaturalLanguageInput';
-import { EventModal } from './components/EventModal';
-import { TasksPanel } from './components/TasksPanel';
-import { ConflictResolverModal } from './components/ConflictResolverModal';
-import { PomodoroTimer } from './components/PomodoroTimer';
-import { SheetsModal } from './components/SheetsModal';
-import { GmailModal } from './components/GmailModal';
-import { AnalyticsModal } from './components/AnalyticsModal';
-import { TemplateLibraryModal } from './components/TemplateLibraryModal';
-import { TodayWidget } from './components/TodayWidget';
-import { ConfirmationModal } from './components/ConfirmationModal';
-import { OcrScannerModal } from './components/OcrScannerModal';
-import { TeamMeetingModal } from './components/TeamMeetingModal';
-import { SmartRescheduleModal } from './components/SmartRescheduleModal';
-import { EnergyMatcherModal } from './components/EnergyMatcherModal';
-import { TravelBufferModal } from './components/TravelBufferModal';
+import { Navbar } from "./components/Navbar";
+import { CalendarGrid } from "./components/CalendarGrid";
+import { NaturalLanguageInput } from "./components/NaturalLanguageInput";
+import { EventModal } from "./components/EventModal";
+import { TasksPanel } from "./components/TasksPanel";
+import { ConflictResolverModal } from "./components/ConflictResolverModal";
+import { PomodoroTimer } from "./components/PomodoroTimer";
+import { SheetsModal } from "./components/SheetsModal";
+import { GmailModal } from "./components/GmailModal";
+import { AnalyticsModal } from "./components/AnalyticsModal";
+import { TemplateLibraryModal } from "./components/TemplateLibraryModal";
+import { TodayWidget } from "./components/TodayWidget";
+import { ConfirmationModal } from "./components/ConfirmationModal";
+import { OcrScannerModal } from "./components/OcrScannerModal";
+import { TeamMeetingModal } from "./components/TeamMeetingModal";
+import { SmartRescheduleModal } from "./components/SmartRescheduleModal";
+import { EnergyMatcherModal } from "./components/EnergyMatcherModal";
+import { TravelBufferModal } from "./components/TravelBufferModal";
 
 export default function App() {
   // Auth state
   const [user, setUser] = useState<User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  // Flag để tránh infinite loop: khi Firestore snapshot cập nhật events,
+  // không sync ngược lại lên Firestore
+  const isLoadingFromFirestoreRef = useRef(false);
+  // Ref để cleanup Firestore realtime listener khi logout
+  const firestoreUnsubRef = useRef<(() => void) | null>(null);
 
   // Network state
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   // Theme state
   const [isDarkMode, setIsDarkMode] = useState(() => {
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return (
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches
+    );
   });
 
   // User Profile
-  const [userProfile, setUserProfile] = useState<UserProfile>(() => loadUserProfile());
+  const [userProfile, setUserProfile] = useState<UserProfile>(() =>
+    loadUserProfile(),
+  );
 
   // Current Date & View
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
-  const [viewMode, setViewMode] = useState<'week' | 'day' | 'agenda'>('week');
+  const [viewMode, setViewMode] = useState<"week" | "day" | "agenda">("week");
 
   // Schedule Events
   const [events, setEvents] = useState<ScheduleItem[]>(() => {
@@ -94,20 +117,26 @@ export default function App() {
 
   // Google Calendar state
   const [calendars, setCalendars] = useState<GoogleCalendar[]>([]);
-  const [selectedCalendarId, setSelectedCalendarId] = useState<string>('primary');
+  const [selectedCalendarId, setSelectedCalendarId] =
+    useState<string>("primary");
   const [isSyncingCalendar, setIsSyncingCalendar] = useState(false);
 
   // Google Tasks state
-  const [taskLists, setTaskLists] = useState<{ id: string; title: string }[]>([]);
-  const [selectedTaskListId, setSelectedTaskListId] = useState<string>('');
+  const [taskLists, setTaskLists] = useState<{ id: string; title: string }[]>(
+    [],
+  );
+  const [selectedTaskListId, setSelectedTaskListId] = useState<string>("");
   const [tasks, setTasks] = useState<GoogleTaskItem[]>([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
 
   // Modals state
-  const [selectedEvent, setSelectedEvent] = useState<Partial<ScheduleItem> | null>(null);
+  const [selectedEvent, setSelectedEvent] =
+    useState<Partial<ScheduleItem> | null>(null);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
 
-  const [activeConflict, setActiveConflict] = useState<ConflictItem | null>(null);
+  const [activeConflict, setActiveConflict] = useState<ConflictItem | null>(
+    null,
+  );
   const [isConflictModalOpen, setIsConflictModalOpen] = useState(false);
 
   const [isTasksOpen, setIsTasksOpen] = useState(false);
@@ -121,16 +150,21 @@ export default function App() {
   const [isOcrOpen, setIsOcrOpen] = useState(false);
   const [isTeamMeetingOpen, setIsTeamMeetingOpen] = useState(false);
   const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
-  const [reschedulePreselectedId, setReschedulePreselectedId] = useState<string | null>(null);
+  const [reschedulePreselectedId, setReschedulePreselectedId] = useState<
+    string | null
+  >(null);
   const [isEnergyMatcherOpen, setIsEnergyMatcherOpen] = useState(false);
   const [isTravelBufferOpen, setIsTravelBufferOpen] = useState(false);
   const [showEnergyOverlay, setShowEnergyOverlay] = useState<boolean>(() => {
-    return localStorage.getItem('smart_schedule_energy_overlay') === 'true';
+    return localStorage.getItem("smart_schedule_energy_overlay") === "true";
   });
 
   const handleToggleEnergyOverlay = (val: boolean) => {
     setShowEnergyOverlay(val);
-    localStorage.setItem('smart_schedule_energy_overlay', val ? 'true' : 'false');
+    localStorage.setItem(
+      "smart_schedule_energy_overlay",
+      val ? "true" : "false",
+    );
   };
 
   const handleUpdateChronotype = (c: Chronotype) => {
@@ -151,10 +185,16 @@ export default function App() {
     onConfirm: () => void;
   }>({
     isOpen: false,
-    title: '',
-    message: '',
+    title: "",
+    message: "",
     onConfirm: () => {},
   });
+
+  // State riêng cho dialog first-login Firestore — tránh conflict với confirmConfig xóa event
+  const [firestoreDialogConfig, setFirestoreDialogConfig] = useState<{
+    isOpen: boolean;
+    onConfirm: () => void;
+  }>({ isOpen: false, onConfirm: () => {} });
 
   // Initialize Auth
   useEffect(() => {
@@ -165,47 +205,132 @@ export default function App() {
           setAccessToken(token);
           setUserProfile((prev) => ({
             ...prev,
-            email: firebaseUser.email || '',
+            email: firebaseUser.email || "",
             name: firebaseUser.displayName || prev.name,
             avatarUrl: firebaseUser.photoURL || undefined,
           }));
         }
+
+        // Load dữ liệu từ Firestore khi user đăng nhập
+        try {
+          const [firestoreEvents, firestoreProfile] = await Promise.all([
+            loadEventsFromFirestore(firebaseUser.uid),
+            loadProfileFromFirestore(firebaseUser.uid),
+          ]);
+
+          const isFirstLogin =
+            firestoreEvents.length === 0 && !firestoreProfile;
+          const hasLocalData =
+            loadLocalSchedule().filter((e) => !e.id.startsWith("init-"))
+              .length > 0;
+
+          if (firestoreEvents.length > 0) {
+            // Có data trên cloud → dùng cloud, bỏ qua local
+            setEvents(firestoreEvents);
+            saveLocalSchedule(firestoreEvents);
+          } else if (isFirstLogin && hasLocalData) {
+            // Lần đầu đăng nhập + có data local do người dùng tự tạo → hỏi
+            setFirestoreDialogConfig({
+              isOpen: true,
+              onConfirm: async () => {
+                const localEvents = loadLocalSchedule();
+                await saveEventsToFirestore(firebaseUser.uid, localEvents);
+                setFirestoreDialogConfig((prev) => ({
+                  ...prev,
+                  isOpen: false,
+                }));
+              },
+            });
+          } else if (isFirstLogin) {
+            // Lần đầu đăng nhập, chỉ có data mẫu init- → xóa sạch, bắt đầu trống
+            setEvents([]);
+            saveLocalSchedule([]);
+          }
+
+          if (firestoreProfile) {
+            setUserProfile((prev) => ({
+              ...prev,
+              ...firestoreProfile,
+              email: firebaseUser.email || firestoreProfile.email,
+              name: firebaseUser.displayName || firestoreProfile.name,
+              avatarUrl: firebaseUser.photoURL || firestoreProfile.avatarUrl,
+            }));
+            saveUserProfile(firestoreProfile);
+          }
+        } catch (e) {
+          console.warn("Firestore load failed, using local data:", e);
+        }
+
+        // Bắt đầu lắng nghe thay đổi realtime từ Firestore
+        if (firestoreUnsubRef.current) firestoreUnsubRef.current();
+        firestoreUnsubRef.current = subscribeToEvents(
+          firebaseUser.uid,
+          (updatedEvents) => {
+            isLoadingFromFirestoreRef.current = true;
+            setEvents(updatedEvents);
+            saveLocalSchedule(updatedEvents);
+            // Reset flag sau một tick để useEffect save không sync ngược lại
+            setTimeout(() => {
+              isLoadingFromFirestoreRef.current = false;
+            }, 0);
+          },
+        );
       },
       () => {
         setUser(null);
         setAccessToken(null);
-      }
+        // Dừng realtime listener khi logout
+        if (firestoreUnsubRef.current) {
+          firestoreUnsubRef.current();
+          firestoreUnsubRef.current = null;
+        }
+      },
     );
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (firestoreUnsubRef.current) firestoreUnsubRef.current();
+    };
   }, []);
 
   // Online / Offline listeners
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
     };
   }, []);
 
-  // Save events & profile locally
+  // Save events locally + sync lên Firestore nếu đã đăng nhập
+  // Dùng flag để tránh infinite loop khi nhận update từ Firestore realtime
   useEffect(() => {
     saveLocalSchedule(events);
-  }, [events]);
+    if (user?.uid && !isLoadingFromFirestoreRef.current) {
+      saveEventsToFirestore(user.uid, events).catch((e) =>
+        console.warn("Firestore events sync failed:", e),
+      );
+    }
+  }, [events, user?.uid]);
 
+  // Save profile locally + sync lên Firestore nếu đã đăng nhập
   useEffect(() => {
     saveUserProfile(userProfile);
-  }, [userProfile]);
+    if (user?.uid) {
+      saveProfileToFirestore(user.uid, userProfile).catch((e) =>
+        console.warn("Firestore profile sync failed:", e),
+      );
+    }
+  }, [userProfile, user?.uid]);
 
   // Dark mode effect
   useEffect(() => {
     if (isDarkMode) {
-      document.documentElement.classList.add('dark');
+      document.documentElement.classList.add("dark");
     } else {
-      document.documentElement.classList.remove('dark');
+      document.documentElement.classList.remove("dark");
     }
   }, [isDarkMode]);
 
@@ -225,7 +350,9 @@ export default function App() {
         if (startA < endB && startB < endA) {
           const overlapStart = Math.max(startA, startB);
           const overlapEnd = Math.min(endA, endB);
-          const overlapMinutes = Math.round((overlapEnd - overlapStart) / (1000 * 60));
+          const overlapMinutes = Math.round(
+            (overlapEnd - overlapStart) / (1000 * 60),
+          );
           if (overlapMinutes > 0) {
             list.push({
               eventA: evA,
@@ -240,8 +367,11 @@ export default function App() {
   }, [events]);
 
   // Sign In with Google
+  const [loginError, setLoginError] = useState<string | null>(null);
+
   const handleLogin = async () => {
     setIsLoggingIn(true);
+    setLoginError(null);
     try {
       const res = await googleSignIn();
       if (res) {
@@ -249,7 +379,7 @@ export default function App() {
         setAccessToken(res.accessToken);
         setUserProfile((prev) => ({
           ...prev,
-          email: res.user.email || '',
+          email: res.user.email || "",
           name: res.user.displayName || prev.name,
           avatarUrl: res.user.photoURL || undefined,
         }));
@@ -258,7 +388,16 @@ export default function App() {
         loadRemoteTasks(res.accessToken);
       }
     } catch (e: any) {
-      console.error('Google Sign in failed:', e);
+      console.error("Google Sign in failed:", e);
+      // Bỏ qua lỗi user tự đóng popup
+      if (
+        e?.code !== "auth/popup-closed-by-user" &&
+        e?.code !== "auth/cancelled-popup-request"
+      ) {
+        setLoginError(
+          e?.message || "Đăng nhập Google thất bại. Vui lòng thử lại.",
+        );
+      }
     } finally {
       setIsLoggingIn(false);
     }
@@ -280,7 +419,7 @@ export default function App() {
       const primary = cals.find((c) => c.primary) || cals[0];
       if (primary) setSelectedCalendarId(primary.id);
     } catch (e) {
-      console.warn('Could not load Google calendars:', e);
+      console.warn("Could not load Google calendars:", e);
     }
   }, []);
 
@@ -307,7 +446,7 @@ export default function App() {
         accessToken,
         selectedCalendarId,
         monday.toISOString(),
-        sunday.toISOString()
+        sunday.toISOString(),
       );
 
       // Merge remote events with local non-synced events
@@ -316,7 +455,7 @@ export default function App() {
         return [...localOnly, ...remoteEvents];
       });
     } catch (e: any) {
-      console.error('Failed to sync Google calendar:', e);
+      console.error("Failed to sync Google calendar:", e);
     } finally {
       setIsSyncingCalendar(false);
     }
@@ -330,11 +469,15 @@ export default function App() {
       setTaskLists(lists);
       if (lists.length > 0) {
         setSelectedTaskListId(lists[0].id);
-        const taskItems = await listGoogleTasks(token, lists[0].id, lists[0].title);
+        const taskItems = await listGoogleTasks(
+          token,
+          lists[0].id,
+          lists[0].title,
+        );
         setTasks(taskItems);
       }
     } catch (e) {
-      console.warn('Could not load Google tasks:', e);
+      console.warn("Could not load Google tasks:", e);
     } finally {
       setIsLoadingTasks(false);
     }
@@ -346,10 +489,14 @@ export default function App() {
     setIsLoadingTasks(true);
     try {
       const found = taskLists.find((l) => l.id === listId);
-      const taskItems = await listGoogleTasks(accessToken, listId, found?.title || '');
+      const taskItems = await listGoogleTasks(
+        accessToken,
+        listId,
+        found?.title || "",
+      );
       setTasks(taskItems);
     } catch (e) {
-      console.error('Failed to load tasks for list:', e);
+      console.error("Failed to load tasks for list:", e);
     } finally {
       setIsLoadingTasks(false);
     }
@@ -357,7 +504,13 @@ export default function App() {
 
   const handleAddNewTask = async (title: string, due?: string) => {
     if (!accessToken || !selectedTaskListId) return;
-    const newTask = await createGoogleTask(accessToken, selectedTaskListId, title, undefined, due);
+    const newTask = await createGoogleTask(
+      accessToken,
+      selectedTaskListId,
+      title,
+      undefined,
+      due,
+    );
     setTasks((prev) => [newTask, ...prev]);
   };
 
@@ -369,7 +522,6 @@ export default function App() {
 
   // Schedule task into next available slot
   const handleScheduleTaskToSlot = (task: GoogleTaskItem) => {
-    // Find next free 1-hour slot starting tomorrow or today afternoon
     const baseDate = new Date();
     baseDate.setMinutes(0, 0, 0);
     let targetHour = Math.max(8, baseDate.getHours() + 1);
@@ -378,23 +530,21 @@ export default function App() {
       targetHour = 9;
     }
 
-    const startISO = `${baseDate.toISOString().split('T')[0]}T${targetHour
-      .toString()
-      .padStart(2, '0')}:00:00`;
-    const endISO = `${baseDate.toISOString().split('T')[0]}T${(targetHour + 1)
-      .toString()
-      .padStart(2, '0')}:00:00`;
+    // Dùng local date string để tránh lỗi timezone UTC vs local
+    const localDate = `${baseDate.getFullYear()}-${String(baseDate.getMonth() + 1).padStart(2, "0")}-${String(baseDate.getDate()).padStart(2, "0")}`;
+    const startISO = `${localDate}T${String(targetHour).padStart(2, "0")}:00:00`;
+    const endISO = `${localDate}T${String(targetHour + 1).padStart(2, "0")}:00:00`;
 
     const newEvent: ScheduleItem = {
       id: `task-sched-${Date.now()}`,
       title: task.title,
-      description: task.notes || 'Được lên lịch tự động từ Google Tasks',
+      description: task.notes || "Được lên lịch tự động từ Google Tasks",
       startTime: startISO,
       endTime: endISO,
-      category: 'work',
-      priority: 'high',
+      category: "work",
+      priority: "high",
       pomodoroBlocks: 2,
-      source: 'google_tasks',
+      source: "google_tasks",
     };
 
     setEvents((prev) => [...prev, newEvent]);
@@ -407,18 +557,19 @@ export default function App() {
     const eventId = eventData.id || `evt-${Date.now()}`;
     const fullEvent: ScheduleItem = {
       id: eventId,
-      title: eventData.title || '(Không có tiêu đề)',
+      title: eventData.title || "(Không có tiêu đề)",
       description: eventData.description,
       startTime: eventData.startTime || new Date().toISOString(),
-      endTime: eventData.endTime || new Date(Date.now() + 3600000).toISOString(),
-      category: eventData.category || 'study',
-      priority: eventData.priority || 'medium',
+      endTime:
+        eventData.endTime || new Date(Date.now() + 3600000).toISOString(),
+      category: eventData.category || "study",
+      priority: eventData.priority || "medium",
       location: eventData.location,
       hasMeet: eventData.hasMeet,
       meetLink: eventData.meetLink,
       pomodoroBlocks: eventData.pomodoroBlocks || 1,
       isSyncedToGoogle: eventData.isSyncedToGoogle,
-      source: eventData.source || 'local',
+      source: eventData.source || "local",
       bufferMinutes: eventData.bufferMinutes,
       transitMode: eventData.transitMode,
     };
@@ -426,12 +577,17 @@ export default function App() {
     // If sync with Google Calendar is requested and accessToken is present
     if (fullEvent.isSyncedToGoogle && accessToken) {
       try {
+        const reminderMins =
+          eventData.reminderMinutes ??
+          userProfile.defaultMeetReminderMinutes ??
+          30;
         if (isNew || !fullEvent.googleEventId) {
           const gcalRes = await createGoogleCalendarEvent(
             accessToken,
             selectedCalendarId,
             fullEvent,
-            fullEvent.hasMeet
+            fullEvent.hasMeet,
+            reminderMins,
           );
           fullEvent.googleEventId = gcalRes.id;
           if (gcalRes.hangoutLink) fullEvent.meetLink = gcalRes.hangoutLink;
@@ -440,11 +596,12 @@ export default function App() {
             accessToken,
             selectedCalendarId,
             fullEvent.googleEventId,
-            fullEvent
+            fullEvent,
+            reminderMins,
           );
         }
       } catch (err) {
-        console.error('Google calendar sync error:', err);
+        console.error("Google calendar sync error:", err);
       }
     }
 
@@ -452,27 +609,31 @@ export default function App() {
     let travelBufferItem: ScheduleItem | null = null;
     if (eventData.bufferMinutes && eventData.bufferMinutes > 0) {
       const bufferEnd = new Date(fullEvent.startTime);
-      const bufferStart = new Date(bufferEnd.getTime() - eventData.bufferMinutes * 60 * 1000);
+      const bufferStart = new Date(
+        bufferEnd.getTime() - eventData.bufferMinutes * 60 * 1000,
+      );
       travelBufferItem = {
         id: `buf-for-${eventId}`,
         title: `🚗 Di chuyển: ${eventData.location || fullEvent.title}`,
         description: `Thời gian đệm di chuyển & chuẩn bị (${eventData.bufferMinutes} phút)`,
         startTime: bufferStart.toISOString(),
         endTime: bufferEnd.toISOString(),
-        category: 'break',
-        priority: 'high',
+        category: "break",
+        priority: "high",
         isTravelBuffer: true,
         bufferForEventId: eventId,
         bufferMinutes: eventData.bufferMinutes,
-        transitMode: eventData.transitMode || 'motorcycle',
+        transitMode: eventData.transitMode || "motorcycle",
         travelDestination: eventData.location,
-        color: '#f59e0b',
+        color: "#f59e0b",
       };
     }
 
     setEvents((prev) => {
       // Remove any previous buffer for this event
-      const withoutOldBuffer = prev.filter((e) => e.bufferForEventId !== eventId);
+      const withoutOldBuffer = prev.filter(
+        (e) => e.bufferForEventId !== eventId,
+      );
       const exists = withoutOldBuffer.some((e) => e.id === eventId);
       let nextList = exists
         ? withoutOldBuffer.map((e) => (e.id === eventId ? fullEvent : e))
@@ -495,21 +656,31 @@ export default function App() {
     // Show Confirmation Dialog (Required by Workspace Integration skill)
     setConfirmConfig({
       isOpen: true,
-      title: 'Xóa sự kiện',
+      title: "Xóa sự kiện",
       message: `Bạn có chắc chắn muốn xóa "${ev.title}"? ${
-        ev.googleEventId ? 'Sự kiện này cũng sẽ được xóa khỏi Google Calendar của bạn.' : ''
+        ev.googleEventId
+          ? "Sự kiện này cũng sẽ được xóa khỏi Google Calendar của bạn."
+          : ""
       }`,
-      confirmLabel: 'Xóa vĩnh viễn',
+      confirmLabel: "Xóa vĩnh viễn",
       isDestructive: true,
       onConfirm: async () => {
         if (ev.googleEventId && accessToken) {
           try {
-            await deleteGoogleCalendarEvent(accessToken, selectedCalendarId, ev.googleEventId);
+            await deleteGoogleCalendarEvent(
+              accessToken,
+              selectedCalendarId,
+              ev.googleEventId,
+            );
           } catch (e) {
-            console.error('Failed to delete Google event:', e);
+            console.error("Failed to delete Google event:", e);
           }
         }
-        setEvents((prev) => prev.filter((e) => e.id !== eventId && e.bufferForEventId !== eventId));
+        setEvents((prev) =>
+          prev.filter(
+            (e) => e.id !== eventId && e.bufferForEventId !== eventId,
+          ),
+        );
         setConfirmConfig((prev) => ({ ...prev, isOpen: false }));
         setIsEventModalOpen(false);
         setSelectedEvent(null);
@@ -519,37 +690,60 @@ export default function App() {
 
   const handleToggleComplete = (eventId: string) => {
     setEvents((prev) =>
-      prev.map((e) => (e.id === eventId ? { ...e, isCompleted: !e.isCompleted } : e))
+      prev.map((e) =>
+        e.id === eventId ? { ...e, isCompleted: !e.isCompleted } : e,
+      ),
     );
   };
 
   // AI Resolution Apply
   const handleApplyConflictResolution = (
     option: ConflictResolutionOption,
-    conflict: ConflictItem
+    conflict: ConflictItem,
   ) => {
-    if (option.actionType === 'shift_event_b' && option.suggestedStartTime && option.suggestedEndTime) {
+    if (
+      option.actionType === "shift_event_b" &&
+      option.suggestedStartTime &&
+      option.suggestedEndTime
+    ) {
       setEvents((prev) =>
         prev.map((e) =>
           e.id === conflict.eventB.id
-            ? { ...e, startTime: option.suggestedStartTime!, endTime: option.suggestedEndTime! }
-            : e
-        )
+            ? {
+                ...e,
+                startTime: option.suggestedStartTime!,
+                endTime: option.suggestedEndTime!,
+              }
+            : e,
+        ),
       );
-    } else if (option.actionType === 'shift_event_a' && option.suggestedStartTime && option.suggestedEndTime) {
+    } else if (
+      option.actionType === "shift_event_a" &&
+      option.suggestedStartTime &&
+      option.suggestedEndTime
+    ) {
       setEvents((prev) =>
         prev.map((e) =>
           e.id === conflict.eventA.id
-            ? { ...e, startTime: option.suggestedStartTime!, endTime: option.suggestedEndTime! }
-            : e
-        )
+            ? {
+                ...e,
+                startTime: option.suggestedStartTime!,
+                endTime: option.suggestedEndTime!,
+              }
+            : e,
+        ),
       );
-    } else if (option.actionType === 'shorten') {
-      // Shorten event A to end before event B starts
+    } else if (option.actionType === "shorten") {
+      // Dùng targetEventId nếu AI trả về, fallback về eventA
+      const targetId = option.targetEventId || conflict.eventA.id;
+      const otherEvent =
+        targetId === conflict.eventA.id ? conflict.eventB : conflict.eventA;
       setEvents((prev) =>
         prev.map((e) =>
-          e.id === conflict.eventA.id ? { ...e, endTime: conflict.eventB.startTime } : e
-        )
+          e.id === targetId
+            ? { ...e, endTime: option.suggestedEndTime || otherEvent.startTime }
+            : e,
+        ),
       );
     }
     setIsConflictModalOpen(false);
@@ -557,7 +751,10 @@ export default function App() {
   };
 
   // Natural Language Batch Add
-  const handleApplyScheduledItems = (newItems: ScheduleItem[], _explanation: string) => {
+  const handleApplyScheduledItems = (
+    newItems: ScheduleItem[],
+    _explanation: string,
+  ) => {
     setEvents((prev) => [...prev, ...newItems]);
   };
 
@@ -569,17 +766,20 @@ export default function App() {
     monday.setDate(diff);
 
     const adjustedItems: ScheduleItem[] = template.items.map((it, idx) => {
-      // Map to current week's days
       const origStart = new Date(it.startTime);
       const origEnd = new Date(it.endTime);
-      const dayOffset = idx % 5; // Monday to Friday
+
+      // Lấy ngày trong tuần từ template (0=Sun..6=Sat), map sang tuần hiện tại
+      const origDay = origStart.getDay(); // 0=CN, 1=T2...6=T7
+      // Tính offset từ Monday: Mon=0, Tue=1, ... Sun=6
+      const dayOffset = origDay === 0 ? 6 : origDay - 1;
 
       const targetStart = new Date(monday);
       targetStart.setDate(monday.getDate() + dayOffset);
-      targetStart.setHours(origStart.getHours(), origStart.getMinutes(), 0);
+      targetStart.setHours(origStart.getHours(), origStart.getMinutes(), 0, 0);
 
-      const targetEnd = new Date(targetStart);
-      targetEnd.setHours(origEnd.getHours(), origEnd.getMinutes(), 0);
+      const duration = origEnd.getTime() - origStart.getTime();
+      const targetEnd = new Date(targetStart.getTime() + duration);
 
       return {
         ...it,
@@ -593,18 +793,23 @@ export default function App() {
   };
 
   // Schedule Team Meeting from Slot Finder / Poll
-  const handleScheduleTeamMeeting = async (meetingData: Partial<ScheduleItem>, attendees: string[]) => {
+  const handleScheduleTeamMeeting = async (
+    meetingData: Partial<ScheduleItem>,
+    attendees: string[],
+  ) => {
     const newMeeting: ScheduleItem = {
       id: `team-meet-${Date.now()}`,
-      title: meetingData.title || 'Họp Nhóm',
-      description: meetingData.description || `Họp nhóm với: ${attendees.join(', ')}`,
+      title: meetingData.title || "Họp Nhóm",
+      description:
+        meetingData.description || `Họp nhóm với: ${attendees.join(", ")}`,
       startTime: meetingData.startTime || new Date().toISOString(),
-      endTime: meetingData.endTime || new Date(Date.now() + 3600000).toISOString(),
-      category: 'meeting',
-      priority: 'high',
+      endTime:
+        meetingData.endTime || new Date(Date.now() + 3600000).toISOString(),
+      category: "meeting",
+      priority: "high",
       hasMeet: true,
       isSyncedToGoogle: !!accessToken,
-      source: 'ai',
+      source: "ai",
     };
 
     if (accessToken) {
@@ -613,12 +818,13 @@ export default function App() {
           accessToken,
           selectedCalendarId,
           newMeeting,
-          true
+          true,
+          userProfile.defaultMeetReminderMinutes || 30,
         );
         newMeeting.googleEventId = gcalRes.id;
         if (gcalRes.hangoutLink) newMeeting.meetLink = gcalRes.hangoutLink;
       } catch (e) {
-        console.error('Failed to create team meeting on Google Calendar:', e);
+        console.error("Failed to create team meeting on Google Calendar:", e);
       }
     }
 
@@ -626,12 +832,17 @@ export default function App() {
   };
 
   // Apply AI Smart Auto-Reschedule
-  const handleApplyRescheduledEvents = async (updatedEvents: ScheduleItem[], _impactSummary: string) => {
+  const handleApplyRescheduledEvents = async (
+    updatedEvents: ScheduleItem[],
+    _impactSummary: string,
+  ) => {
     const updatedMap = new Map<string, ScheduleItem>();
     updatedEvents.forEach((ev) => updatedMap.set(ev.id, ev));
 
     setEvents((prev) =>
-      prev.map((item) => (updatedMap.has(item.id) ? updatedMap.get(item.id)! : item))
+      prev.map((item) =>
+        updatedMap.has(item.id) ? updatedMap.get(item.id)! : item,
+      ),
     );
 
     // If user has connected Google Calendar, sync updated events
@@ -643,23 +854,53 @@ export default function App() {
               accessToken,
               selectedCalendarId,
               ev.googleEventId,
-              ev
+              ev,
             );
           } catch (e) {
-            console.error('Failed to sync rescheduled event to Google Calendar:', e);
+            console.error(
+              "Failed to sync rescheduled event to Google Calendar:",
+              e,
+            );
           }
         }
       }
     }
 
     try {
-      const confetti = (await import('canvas-confetti')).default;
+      const confetti = (await import("canvas-confetti")).default;
       confetti({ particleCount: 40, spread: 50, origin: { y: 0.6 } });
     } catch (e) {}
   };
 
   return (
     <div className="min-h-screen bg-zinc-100 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white transition-colors duration-200">
+      {/* Login error toast */}
+      {loginError && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 px-4 py-3 bg-rose-600 text-white text-xs font-semibold rounded-2xl shadow-xl animate-in slide-in-from-top-2 duration-200">
+          <span>{loginError}</span>
+          <button
+            onClick={() => setLoginError(null)}
+            className="text-white/80 hover:text-white text-sm font-bold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Cảnh báo Firebase chưa cấu hình */}
+      {!user &&
+        !isLoggingIn &&
+        (() => {
+          const cfg = (window as any).__FIREBASE_CFG_MISSING__;
+          return cfg ? (
+            <div className="bg-amber-50 dark:bg-amber-950/60 border-b border-amber-200 dark:border-amber-800 px-4 py-2 text-xs text-amber-800 dark:text-amber-300 text-center">
+              ⚠️ Chưa cấu hình Firebase — tính năng Google sẽ không hoạt động
+              cho đến khi bạn thêm cấu hình Firebase vào{" "}
+              <code>firebase-applet-config.json</code>
+            </div>
+          ) : null;
+        })()}
+
       {/* Top Navbar */}
       <Navbar
         user={user}
@@ -667,8 +908,6 @@ export default function App() {
         isLoggingIn={isLoggingIn}
         onLogin={handleLogin}
         onLogout={handleLogout}
-        persona={userProfile.persona}
-        onPersonaChange={(p) => setUserProfile((prev) => ({ ...prev, persona: p }))}
         conflictCount={conflicts.length}
         onOpenConflicts={() => {
           if (conflicts.length > 0) {
@@ -704,7 +943,9 @@ export default function App() {
         <NaturalLanguageInput
           currentEvents={events}
           userProfile={userProfile}
-          onUpdateProfile={(partial) => setUserProfile((prev) => ({ ...prev, ...partial }))}
+          onUpdateProfile={(partial) =>
+            setUserProfile((prev) => ({ ...prev, ...partial }))
+          }
           weekStart={currentDate.toISOString()}
           onApplyScheduledItems={handleApplyScheduledItems}
           onOpenOcrScanner={() => setIsOcrOpen(true)}
@@ -771,73 +1012,36 @@ export default function App() {
               onOpenTravelBuffer={() => setIsTravelBufferOpen(true)}
             />
 
-            {/* Quick Actions Card */}
-            <div className="bg-white dark:bg-zinc-900 rounded-3xl p-4 shadow-sm border border-zinc-200/90 dark:border-zinc-800 space-y-2 text-xs">
-              <span className="font-bold text-zinc-700 dark:text-zinc-300 block mb-2">
-                Hệ sinh thái Google
+            {/* Quick Actions Card — gọn */}
+            <div className="bg-white dark:bg-zinc-900 rounded-3xl p-4 shadow-sm border border-zinc-200/90 dark:border-zinc-800 text-xs">
+              <span className="font-semibold text-zinc-500 dark:text-zinc-400 block mb-2 uppercase tracking-wider text-[10px]">
+                Google Workspace
               </span>
-
-              <button
-                onClick={() => setIsTasksOpen(true)}
-                className="w-full text-left px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-zinc-700 dark:text-zinc-300 hover:text-emerald-700 dark:hover:text-emerald-300 transition flex items-center justify-between"
-              >
-                <span>Google Tasks ({tasks.length} task)</span>
-                <span className="text-[10px] font-bold text-emerald-600">Đồng bộ</span>
-              </button>
-
-              <button
-                onClick={() => setIsSheetsOpen(true)}
-                className="w-full text-left px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-zinc-700 dark:text-zinc-300 hover:text-emerald-700 dark:hover:text-emerald-300 transition flex items-center justify-between"
-              >
-                <span>Google Sheets</span>
-                <span className="text-[10px] font-bold text-emerald-600">Xuất/Nhập</span>
-              </button>
-
-              <button
-                onClick={() => setIsGmailOpen(true)}
-                className="w-full text-left px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-zinc-700 dark:text-zinc-300 hover:text-rose-700 dark:hover:text-rose-300 transition flex items-center justify-between"
-              >
-                <span>Gmail Schedule Digest</span>
-                <span className="text-[10px] font-bold text-rose-600">Gửi mail</span>
-              </button>
-
-              <button
-                onClick={() => setIsOcrOpen(true)}
-                className="w-full text-left px-3 py-2 rounded-xl bg-violet-50/70 dark:bg-violet-950/40 hover:bg-violet-100 dark:hover:bg-violet-900/50 text-violet-800 dark:text-violet-200 transition flex items-center justify-between border border-violet-200/60 dark:border-violet-800/60"
-              >
-                <span className="font-semibold">Quét TKB từ Ảnh / PDF</span>
-                <span className="text-[10px] font-bold text-violet-600 dark:text-violet-400">Gemini OCR</span>
-              </button>
-
-              <button
-                onClick={() => setIsTeamMeetingOpen(true)}
-                className="w-full text-left px-3 py-2 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-800 dark:text-indigo-200 transition flex items-center justify-between border border-indigo-200/60 dark:border-indigo-800/60"
-              >
-                <span className="font-semibold">Giờ Họp Team & Poll</span>
-                <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">Smart Finder</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setReschedulePreselectedId(null);
-                  setIsRescheduleOpen(true);
-                }}
-                className="w-full text-left px-3 py-2 rounded-xl bg-amber-50/70 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-800 dark:text-amber-200 transition flex items-center justify-between border border-amber-200/60 dark:border-amber-800/60"
-              >
-                <span className="font-semibold">Dời Lịch Trễ AI</span>
-                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">Auto-Reschedule</span>
-              </button>
-
-              <button
-                onClick={() => setIsEnergyMatcherOpen(true)}
-                className="w-full text-left px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 hover:from-amber-500/20 hover:to-orange-500/20 text-amber-900 dark:text-amber-200 transition flex items-center justify-between border border-amber-300/70 dark:border-amber-700/60"
-              >
-                <span className="font-semibold flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-                  Nhịp Sinh Học AI
-                </span>
-                <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400">Energy Matcher</span>
-              </button>
+              <div className="space-y-1">
+                <button
+                  onClick={() => setIsTasksOpen(true)}
+                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 transition flex items-center justify-between"
+                >
+                  <span>Tasks</span>
+                  <span className="text-[10px] text-zinc-400">
+                    {tasks.length} việc
+                  </span>
+                </button>
+                <button
+                  onClick={() => setIsSheetsOpen(true)}
+                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 transition flex items-center justify-between"
+                >
+                  <span>Sheets</span>
+                  <span className="text-[10px] text-zinc-400">Xuất/Nhập</span>
+                </button>
+                <button
+                  onClick={() => setIsGmailOpen(true)}
+                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 transition flex items-center justify-between"
+                >
+                  <span>Gmail Digest</span>
+                  <span className="text-[10px] text-zinc-400">Gửi mail</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -899,9 +1103,12 @@ export default function App() {
             setEvents((prev) =>
               prev.map((e) =>
                 e.id === eventId
-                  ? { ...e, completedPomodoros: (e.completedPomodoros || 0) + 1 }
-                  : e
-              )
+                  ? {
+                      ...e,
+                      completedPomodoros: (e.completedPomodoros || 0) + 1,
+                    }
+                  : e,
+              ),
             );
           }
         }}
@@ -916,15 +1123,16 @@ export default function App() {
         onImportItems={(imported) => {
           const newItems: ScheduleItem[] = imported.map((item, idx) => ({
             id: `import-${Date.now()}-${idx}`,
-            title: item.title || 'Môn học mới',
-            description: item.description || '',
+            title: item.title || "Môn học mới",
+            description: item.description || "",
             startTime: item.startTime || new Date().toISOString(),
-            endTime: item.endTime || new Date(Date.now() + 3600000).toISOString(),
-            category: item.category || 'study',
-            priority: item.priority || 'medium',
+            endTime:
+              item.endTime || new Date(Date.now() + 3600000).toISOString(),
+            category: item.category || "study",
+            priority: item.priority || "medium",
             hasMeet: item.hasMeet,
             meetLink: item.meetLink,
-            source: 'sheets',
+            source: "sheets",
           }));
           setEvents((prev) => [...prev, ...newItems]);
         }}
@@ -943,9 +1151,9 @@ export default function App() {
         onRequestConfirmSend={(onConfirmSend, details) => {
           setConfirmConfig({
             isOpen: true,
-            title: 'Xác nhận gửi email qua Gmail',
+            title: "Xác nhận gửi email qua Gmail",
             message: `Bạn có đồng ý gửi email này qua hộp thư cá nhân của bạn không?`,
-            confirmLabel: 'Gửi Email',
+            confirmLabel: "Gửi Email",
             isDestructive: false,
             itemDetails: [details],
             onConfirm: async () => {
@@ -963,7 +1171,17 @@ export default function App() {
         events={events}
         userProfile={userProfile}
         onApplyOptimizedEvents={(optimized) => {
-          setEvents(optimized);
+          // Merge: update các event có id trùng, giữ nguyên các event không có trong optimized
+          const optimizedMap = new Map(optimized.map((e) => [e.id, e]));
+          setEvents((prev) => {
+            const updated = prev.map((e) =>
+              optimizedMap.has(e.id) ? optimizedMap.get(e.id)! : e,
+            );
+            // Thêm các event mới (id không tồn tại trong prev)
+            const prevIds = new Set(prev.map((e) => e.id));
+            const newOnes = optimized.filter((e) => !prevIds.has(e.id));
+            return [...updated, ...newOnes];
+          });
         }}
       />
 
@@ -1043,8 +1261,52 @@ export default function App() {
         isDestructive={confirmConfig.isDestructive}
         itemDetails={confirmConfig.itemDetails}
         onConfirm={confirmConfig.onConfirm}
-        onCancel={() => setConfirmConfig((prev) => ({ ...prev, isOpen: false }))}
+        onCancel={() =>
+          setConfirmConfig((prev) => ({ ...prev, isOpen: false }))
+        }
       />
+
+      {/* Dialog đồng bộ dữ liệu lần đầu đăng nhập */}
+      {firestoreDialogConfig.isOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl border border-zinc-200 dark:border-zinc-800 p-6 max-w-sm w-full space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400 text-xl shrink-0">
+                ☁️
+              </div>
+              <div>
+                <h3 className="font-bold text-zinc-900 dark:text-zinc-100 text-sm">
+                  Đồng bộ dữ liệu lên cloud?
+                </h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                  Bạn có lịch trình đã tạo trước đó. Muốn lưu lên tài khoản này
+                  không?
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => {
+                  setEvents([]);
+                  setFirestoreDialogConfig({
+                    isOpen: false,
+                    onConfirm: () => {},
+                  });
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 transition"
+              >
+                Bỏ qua, bắt đầu trống
+              </button>
+              <button
+                onClick={firestoreDialogConfig.onConfirm}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition"
+              >
+                Lưu lên cloud
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

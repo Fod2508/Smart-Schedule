@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   X,
   Video,
@@ -14,8 +14,13 @@ import {
   MapPin,
   Car,
   Navigation,
-} from 'lucide-react';
-import { ScheduleItem, EventCategory, PriorityLevel, TransitMode } from '../types/schedule';
+} from "lucide-react";
+import {
+  ScheduleItem,
+  EventCategory,
+  PriorityLevel,
+  TransitMode,
+} from "../types/schedule";
 
 interface EventModalProps {
   isOpen: boolean;
@@ -36,74 +41,85 @@ export const EventModal: React.FC<EventModalProps> = ({
   onOpenRescheduleForEvent,
   hasGoogleConnected,
 }) => {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [startTime, setStartTime] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [endTime, setEndTime] = useState('');
-  const [category, setCategory] = useState<EventCategory>('study');
-  const [priority, setPriority] = useState<PriorityLevel>('medium');
-  const [location, setLocation] = useState('');
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [startTime, setStartTime] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [endTime, setEndTime] = useState("");
+  const [category, setCategory] = useState<EventCategory>("study");
+  const [priority, setPriority] = useState<PriorityLevel>("medium");
+  const [location, setLocation] = useState("");
   const [hasMeet, setHasMeet] = useState(false);
-  const [meetLink, setMeetLink] = useState('');
+  const [meetLink, setMeetLink] = useState("");
   const [pomodoroBlocks, setPomodoroBlocks] = useState(1);
   const [syncToGoogle, setSyncToGoogle] = useState(true);
+  const [reminderMinutes, setReminderMinutes] = useState(30);
   const [addTravelBuffer, setAddTravelBuffer] = useState(false);
   const [bufferMinutes, setBufferMinutes] = useState(25);
-  const [transitMode, setTransitMode] = useState<TransitMode>('motorcycle');
+  const [transitMode, setTransitMode] = useState<TransitMode>("motorcycle");
 
   useEffect(() => {
     if (event) {
-      setTitle(event.title || '');
-      setDescription(event.description || '');
-      setCategory(event.category || 'study');
-      setPriority(event.priority || 'medium');
-      setLocation(event.location || '');
+      setTitle(event.title || "");
+      setDescription(event.description || "");
+      setCategory(event.category || "study");
+      setPriority(event.priority || "medium");
+      setLocation(event.location || "");
       setHasMeet(event.hasMeet || false);
-      setMeetLink(event.meetLink || '');
+      setMeetLink(event.meetLink || "");
       setPomodoroBlocks(event.pomodoroBlocks || 1);
       setSyncToGoogle(event.isSyncedToGoogle !== false);
+      setReminderMinutes((event as any).reminderMinutes || 30);
       setAddTravelBuffer(!!event.bufferMinutes);
       setBufferMinutes(event.bufferMinutes || 25);
-      setTransitMode(event.transitMode || 'motorcycle');
+      setTransitMode(event.transitMode || "motorcycle");
 
       const start = event.startTime ? new Date(event.startTime) : new Date();
-      const end = event.endTime ? new Date(event.endTime) : new Date(Date.now() + 60 * 60 * 1000);
+      const end = event.endTime
+        ? new Date(event.endTime)
+        : new Date(Date.now() + 60 * 60 * 1000);
 
-      setStartDate(start.toISOString().split('T')[0]);
+      // Dùng local date để tránh lỗi timezone UTC vs local (UTC+7)
+      const toLocalDateStr = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+      setStartDate(toLocalDateStr(start));
       setStartTime(
-        `${start.getHours().toString().padStart(2, '0')}:${start
+        `${start.getHours().toString().padStart(2, "0")}:${start
           .getMinutes()
           .toString()
-          .padStart(2, '0')}`
+          .padStart(2, "0")}`,
       );
-      setEndDate(end.toISOString().split('T')[0]);
+      setEndDate(toLocalDateStr(end));
       setEndTime(
-        `${end.getHours().toString().padStart(2, '0')}:${end
+        `${end.getHours().toString().padStart(2, "0")}:${end
           .getMinutes()
           .toString()
-          .padStart(2, '0')}`
+          .padStart(2, "0")}`,
       );
     } else {
       // Default new event
       const now = new Date();
-      setTitle('');
-      setDescription('');
-      setCategory('study');
-      setPriority('medium');
-      setLocation('');
+      const toLocalDateStr = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      setTitle("");
+      setDescription("");
+      setCategory("study");
+      setPriority("medium");
+      setLocation("");
       setHasMeet(false);
-      setMeetLink('');
+      setMeetLink("");
       setPomodoroBlocks(1);
       setSyncToGoogle(true);
+      setReminderMinutes(30);
       setAddTravelBuffer(false);
       setBufferMinutes(25);
-      setTransitMode('motorcycle');
-      setStartDate(now.toISOString().split('T')[0]);
-      setStartTime('08:00');
-      setEndDate(now.toISOString().split('T')[0]);
-      setEndTime('09:30');
+      setTransitMode("motorcycle");
+      setStartDate(toLocalDateStr(now));
+      setStartTime("08:00");
+      setEndDate(toLocalDateStr(now));
+      setEndTime("09:30");
     }
   }, [event, isOpen]);
 
@@ -126,13 +142,15 @@ export const EventModal: React.FC<EventModalProps> = ({
       startTime: startISO,
       endTime: endISO,
       hasMeet,
-      meetLink: hasMeet ? (meetLink.trim() || undefined) : undefined,
+      meetLink: hasMeet ? meetLink.trim() || undefined : undefined,
       pomodoroBlocks,
       isSyncedToGoogle: hasGoogleConnected && syncToGoogle,
+      reminderMinutes:
+        hasGoogleConnected && syncToGoogle ? reminderMinutes : undefined,
       bufferMinutes: addTravelBuffer ? bufferMinutes : undefined,
       transitMode: addTravelBuffer ? transitMode : undefined,
     });
-    onClose();
+    // onClose() không cần gọi ở đây — App.tsx handleSaveEvent tự đóng modal sau khi async hoàn tất
   };
 
   return (
@@ -146,7 +164,9 @@ export const EventModal: React.FC<EventModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
-                {event?.id ? 'Chỉnh sửa sự kiện' : 'Thêm sự kiện / Lịch học mới'}
+                {event?.id
+                  ? "Chỉnh sửa sự kiện"
+                  : "Thêm sự kiện / Lịch học mới"}
               </h3>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
                 Tự động đồng bộ với Google Calendar & Google Meet
@@ -162,7 +182,10 @@ export const EventModal: React.FC<EventModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+        <form
+          onSubmit={handleSubmit}
+          className="p-5 space-y-4 max-h-[75vh] overflow-y-auto"
+        >
           {/* Title */}
           <div>
             <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
@@ -242,7 +265,8 @@ export const EventModal: React.FC<EventModalProps> = ({
                     Đệm di chuyển & Chuẩn bị
                   </span>
                   <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                    Tự động chèn khối thời gian đi đường trước sự kiện để tránh trễ giờ
+                    Tự động chèn khối thời gian đi đường trước sự kiện để tránh
+                    trễ giờ
                   </span>
                 </div>
               </div>
@@ -265,13 +289,19 @@ export const EventModal: React.FC<EventModalProps> = ({
                   </label>
                   <select
                     value={bufferMinutes}
-                    onChange={(e) => setBufferMinutes(parseInt(e.target.value, 10))}
+                    onChange={(e) =>
+                      setBufferMinutes(parseInt(e.target.value, 10))
+                    }
                     className="w-full px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium"
                   >
                     <option value={15}>15 phút (gần / cùng quận)</option>
                     <option value={20}>20 phút (chuẩn nội thành)</option>
-                    <option value={30}>30 phút (qua 1-2 quận / giờ tan tầm)</option>
-                    <option value={45}>45 phút (xa / kẹt xe nghiêm trọng)</option>
+                    <option value={30}>
+                      30 phút (qua 1-2 quận / giờ tan tầm)
+                    </option>
+                    <option value={45}>
+                      45 phút (xa / kẹt xe nghiêm trọng)
+                    </option>
                     <option value={60}>60 phút (ngoại thành / xa)</option>
                   </select>
                 </div>
@@ -281,7 +311,9 @@ export const EventModal: React.FC<EventModalProps> = ({
                   </label>
                   <select
                     value={transitMode}
-                    onChange={(e) => setTransitMode(e.target.value as TransitMode)}
+                    onChange={(e) =>
+                      setTransitMode(e.target.value as TransitMode)
+                    }
                     className="w-full px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium"
                   >
                     <option value="motorcycle">🛵 Xe máy (Nhanh)</option>
@@ -297,12 +329,15 @@ export const EventModal: React.FC<EventModalProps> = ({
           {/* Time Picker */}
           <div className="space-y-2 p-3 rounded-2xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-100 dark:border-zinc-800">
             <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-indigo-500" /> Khung giờ thực hiện
+              <Clock className="w-3.5 h-3.5 text-indigo-500" /> Khung giờ thực
+              hiện
             </span>
 
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div>
-                <label className="text-zinc-500 dark:text-zinc-400">Bắt đầu</label>
+                <label className="text-zinc-500 dark:text-zinc-400">
+                  Bắt đầu
+                </label>
                 <div className="flex gap-1 mt-1">
                   <input
                     type="date"
@@ -322,7 +357,9 @@ export const EventModal: React.FC<EventModalProps> = ({
               </div>
 
               <div>
-                <label className="text-zinc-500 dark:text-zinc-400">Kết thúc</label>
+                <label className="text-zinc-500 dark:text-zinc-400">
+                  Kết thúc
+                </label>
                 <div className="flex gap-1 mt-1">
                   <input
                     type="date"
@@ -392,13 +429,17 @@ export const EventModal: React.FC<EventModalProps> = ({
                 <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">
                   Ước lượng Pomodoro
                 </span>
-                <p className="text-[11px] text-zinc-500">Mỗi block = 25 phút tập trung sâu</p>
+                <p className="text-[11px] text-zinc-500">
+                  Mỗi block = 25 phút tập trung sâu
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setPomodoroBlocks(Math.max(1, pomodoroBlocks - 1))}
+                onClick={() =>
+                  setPomodoroBlocks(Math.max(1, pomodoroBlocks - 1))
+                }
                 className="w-7 h-7 rounded-lg bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-xs font-bold"
               >
                 -
@@ -430,19 +471,47 @@ export const EventModal: React.FC<EventModalProps> = ({
             />
           </div>
 
-          {/* Google Sync toggle */}
+          {/* Google Sync toggle + Reminder */}
           {hasGoogleConnected && (
-            <div className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400 pt-1">
-              <input
-                type="checkbox"
-                id="syncToGoogle"
-                checked={syncToGoogle}
-                onChange={(e) => setSyncToGoogle(e.target.checked)}
-                className="rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500"
-              />
-              <label htmlFor="syncToGoogle" className="cursor-pointer">
-                Đồng bộ trực tiếp lên Google Calendar
-              </label>
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+                <input
+                  type="checkbox"
+                  id="syncToGoogle"
+                  checked={syncToGoogle}
+                  onChange={(e) => setSyncToGoogle(e.target.checked)}
+                  className="rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <label htmlFor="syncToGoogle" className="cursor-pointer">
+                  Đồng bộ trực tiếp lên Google Calendar
+                </label>
+              </div>
+
+              {/* Reminder picker — chỉ hiện khi sync được bật */}
+              {syncToGoogle && (
+                <div className="ml-5 flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                    🔔 Nhắc trước:
+                  </span>
+                  {[10, 15, 30, 60, 120].map((mins) => (
+                    <button
+                      key={mins}
+                      type="button"
+                      onClick={() => setReminderMinutes(mins)}
+                      className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold border transition cursor-pointer ${
+                        reminderMinutes === mins
+                          ? "bg-indigo-600 text-white border-indigo-600"
+                          : "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                      }`}
+                    >
+                      {mins < 60 ? `${mins}p` : `${mins / 60}h`}
+                    </button>
+                  ))}
+                  <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                    → Google gửi email & notification điện thoại
+                  </span>
+                </div>
+              )}
             </div>
           )}
 

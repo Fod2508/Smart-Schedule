@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from "react";
 import {
   Sparkles,
   Calendar,
@@ -19,9 +19,9 @@ import {
   FastForward,
   Zap,
   Car,
-} from 'lucide-react';
-import { User } from 'firebase/auth';
-import { UserPersona } from '../types/schedule';
+  ChevronDown,
+} from "lucide-react";
+import { User } from "firebase/auth";
 
 interface NavbarProps {
   user: User | null;
@@ -29,8 +29,6 @@ interface NavbarProps {
   isLoggingIn: boolean;
   onLogin: () => void;
   onLogout: () => void;
-  persona: UserPersona;
-  onPersonaChange: (p: UserPersona) => void;
   conflictCount: number;
   onOpenConflicts: () => void;
   onOpenPomodoro: () => void;
@@ -55,8 +53,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   isLoggingIn,
   onLogin,
   onLogout,
-  persona,
-  onPersonaChange,
   conflictCount,
   onOpenConflicts,
   onOpenPomodoro,
@@ -74,246 +70,266 @@ export const Navbar: React.FC<NavbarProps> = ({
   isDarkMode,
   onToggleDarkMode,
 }) => {
-  const personaLabels: Record<UserPersona, { label: string; desc: string }> = {
-    student: { label: 'Sinh viên', desc: 'Học tập + Tự học + CLB' },
-    teacher: { label: 'Giáo viên', desc: 'Giảng dạy + Chấm bài + Họp' },
-    freelancer: { label: 'Freelancer', desc: 'Nhiều project song song' },
-    team: { label: 'Team / Nhóm', desc: 'Giờ họp chung + Sprint' },
-  };
+  const [isToolsOpen, setIsToolsOpen] = useState(false);
+  const toolsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (toolsRef.current && !toolsRef.current.contains(e.target as Node)) {
+        setIsToolsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // AI-heavy features go in dropdown
+  const aiTools = [
+    {
+      icon: <Camera className="w-4 h-4" />,
+      label: "Quét ảnh thời khóa biểu",
+      desc: "Nhận diện lịch từ ảnh hoặc PDF",
+      onClick: onOpenOcrScanner,
+    },
+    {
+      icon: <Users className="w-4 h-4" />,
+      label: "Tìm giờ họp chung",
+      desc: "Tìm khung giờ trống & tạo bình chọn",
+      onClick: onOpenTeamMeeting,
+    },
+    {
+      icon: <FastForward className="w-4 h-4" />,
+      label: "Xử lý trễ việc",
+      desc: "Tự động sắp xếp lại khi bị trễ giờ",
+      onClick: onOpenReschedule,
+    },
+    {
+      icon: <Zap className="w-4 h-4" />,
+      label: "Tối ưu theo năng lượng",
+      desc: "Xếp lịch theo nhịp sinh học cá nhân",
+      onClick: onOpenEnergyMatcher,
+    },
+    ...(onOpenTravelBuffer
+      ? [
+          {
+            icon: <Car className="w-4 h-4" />,
+            label: "Thêm thời gian di chuyển",
+            desc: "Tự động chèn khoảng đệm giữa 2 lịch",
+            onClick: onOpenTravelBuffer,
+          },
+        ]
+      : []),
+  ];
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800 transition-colors">
+    <header className="sticky top-0 z-40 w-full bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-3">
-          {/* Logo & Brand */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 via-violet-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/25">
-              <Calendar className="w-5 h-5" />
+        <div className="flex items-center justify-between h-14 gap-2">
+          {/* Logo */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-sm">
+              <Calendar className="w-4 h-4" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-base sm:text-lg font-bold text-zinc-900 dark:text-zinc-50 tracking-tight">
-                  Smart Schedule
-                </span>
-                <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
-                  <Sparkles className="w-3 h-3 text-indigo-500" />
-                  Gemini AI
-                </span>
-              </div>
-              <p className="hidden md:block text-xs text-zinc-500 dark:text-zinc-400">
-                Trợ lý xếp thời khóa biểu thông minh & Google Workspace
-              </p>
-            </div>
+            <span className="text-sm font-bold text-zinc-900 dark:text-zinc-50 tracking-tight hidden sm:block">
+              Smart Schedule
+            </span>
           </div>
 
-          {/* Persona Selector */}
-          <div className="hidden lg:flex items-center bg-zinc-100 dark:bg-zinc-800/80 p-1 rounded-xl border border-zinc-200/60 dark:border-zinc-700/60 text-xs">
-            {(['student', 'teacher', 'freelancer', 'team'] as UserPersona[]).map((p) => {
-              const active = persona === p;
-              return (
-                <button
-                  key={p}
-                  onClick={() => onPersonaChange(p)}
-                  className={`px-3 py-1.5 rounded-lg font-medium transition ${
-                    active
-                      ? 'bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
-                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
-                  }`}
-                  title={personaLabels[p].desc}
-                >
-                  {personaLabels[p].label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Action Tools & Integration buttons */}
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            {/* Conflict warning pill */}
+          {/* Center tool buttons */}
+          <div className="flex items-center gap-1 flex-1 justify-center">
+            {/* Conflict badge */}
             {conflictCount > 0 && (
               <button
                 onClick={onOpenConflicts}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-900 rounded-xl transition animate-pulse"
-                title={`${conflictCount} xung đột lịch cần giải quyết`}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-900 rounded-xl transition animate-pulse mr-1"
               >
-                <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                <AlertTriangle className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Trùng lịch</span>
-                <span className="px-1.5 py-0.2 bg-rose-600 text-white rounded-full text-[10px]">
+                <span className="px-1.5 bg-rose-600 text-white rounded-full text-[10px] leading-5">
                   {conflictCount}
                 </span>
               </button>
             )}
 
-            {/* Quét ảnh OCR button */}
-            <button
-              onClick={onOpenOcrScanner}
-              className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-semibold text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/60 hover:bg-violet-100 dark:hover:bg-violet-900/60 border border-violet-200/80 dark:border-violet-800/80 flex items-center gap-1.5 transition cursor-pointer"
-              title="Quét thời khóa biểu từ ảnh hoặc PDF (Gemini Multimodal OCR)"
-            >
-              <Camera className="w-4 h-4 text-violet-600 dark:text-violet-400" />
-              <span className="hidden sm:inline">Quét ảnh TKB</span>
-            </button>
-
-            {/* Team Meeting Finder & Poll */}
-            <button
-              onClick={onOpenTeamMeeting}
-              className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200/80 dark:border-indigo-800/80 flex items-center gap-1.5 transition cursor-pointer"
-              title="Tìm giờ trống chung cho team & tạo bảng khảo sát (Meeting Poll)"
-            >
-              <Users className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-              <span className="hidden md:inline">Giờ họp Team</span>
-            </button>
-
-            {/* Smart Auto-Reschedule when delayed */}
-            <button
-              onClick={onOpenReschedule}
-              className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 border border-amber-200/80 dark:border-amber-800/80 flex items-center gap-1.5 transition cursor-pointer"
-              title="AI Dời lịch thông minh khi bị trễ việc (Smart Auto-Reschedule)"
-            >
-              <FastForward className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-              <span className="hidden md:inline">Dời lịch trễ</span>
-            </button>
-
-            {/* AI Energy Matcher (Xếp lịch theo nhịp sinh học) */}
-            <button
-              onClick={onOpenEnergyMatcher}
-              className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-semibold text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-950/60 hover:bg-orange-100 dark:hover:bg-orange-900/60 border border-orange-200/80 dark:border-orange-800/80 flex items-center gap-1.5 transition cursor-pointer"
-              title="AI Xếp lịch theo Năng lượng sinh học (AI Energy-to-Task Matcher)"
-            >
-              <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
-              <span className="hidden lg:inline">Năng lượng AI</span>
-            </button>
-
-            {/* Travel Buffer (Đệm di chuyển & chuẩn bị) */}
-            {onOpenTravelBuffer && (
-              <button
-                onClick={onOpenTravelBuffer}
-                className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 border border-amber-200/80 dark:border-amber-800/80 flex items-center gap-1.5 transition cursor-pointer"
-                title="Tự động chèn đệm di chuyển & chuẩn bị (Travel Buffer)"
-              >
-                <Car className="w-4 h-4 text-amber-500" />
-                <span className="hidden xl:inline">Đệm di chuyển</span>
-              </button>
-            )}
-
-            {/* Pomodoro Timer button */}
+            {/* Pomodoro */}
             <button
               onClick={onOpenPomodoro}
-              className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center gap-1.5 transition"
-              title="Đồng hồ Pomodoro"
+              title="Pomodoro Timer"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium border border-zinc-200/70 dark:border-zinc-700/70 bg-white dark:bg-zinc-800/60 hover:border-amber-300 dark:hover:border-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-zinc-600 dark:text-zinc-300 hover:text-amber-700 dark:hover:text-amber-300 transition"
             >
-              <Clock className="w-4 h-4 text-amber-500" />
+              <Clock className="w-3.5 h-3.5 text-amber-500" />
               <span className="hidden md:inline">Pomodoro</span>
             </button>
 
-            {/* Google Tasks button */}
+            {/* Tasks */}
             <button
               onClick={onOpenTasks}
-              className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center gap-1.5 transition"
-              title="Google Tasks & Deadline"
+              title="Google Tasks"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium border border-zinc-200/70 dark:border-zinc-700/70 bg-white dark:bg-zinc-800/60 hover:border-emerald-300 dark:hover:border-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-zinc-600 dark:text-zinc-300 hover:text-emerald-700 dark:hover:text-emerald-300 transition"
             >
-              <CheckSquare className="w-4 h-4 text-emerald-500" />
+              <CheckSquare className="w-3.5 h-3.5 text-emerald-500" />
               <span className="hidden md:inline">Tasks</span>
             </button>
 
-            {/* Google Sheets */}
+            {/* Sheets */}
             <button
               onClick={onOpenSheets}
-              className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center gap-1.5 transition"
-              title="Import/Export Google Sheets"
+              title="Google Sheets — Xuất/Nhập lịch"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium border border-zinc-200/70 dark:border-zinc-700/70 bg-white dark:bg-zinc-800/60 hover:border-emerald-300 dark:hover:border-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-zinc-600 dark:text-zinc-300 hover:text-emerald-700 dark:hover:text-emerald-300 transition"
             >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-              <span className="hidden xl:inline">Sheets</span>
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="hidden lg:inline">Sheets</span>
             </button>
 
-            {/* Gmail Digest */}
+            {/* Gmail */}
             <button
               onClick={onOpenGmail}
-              className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center gap-1.5 transition"
-              title="Gửi tổng hợp lịch qua Gmail"
+              title="Gmail Schedule Digest"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium border border-zinc-200/70 dark:border-zinc-700/70 bg-white dark:bg-zinc-800/60 hover:border-rose-300 dark:hover:border-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-zinc-600 dark:text-zinc-300 hover:text-rose-600 dark:hover:text-rose-400 transition"
             >
-              <Mail className="w-4 h-4 text-rose-500" />
-              <span className="hidden xl:inline">Gmail</span>
+              <Mail className="w-3.5 h-3.5 text-rose-500" />
+              <span className="hidden lg:inline">Gmail</span>
             </button>
 
-            {/* Template Library */}
+            {/* Templates */}
             <button
               onClick={onOpenTemplates}
-              className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center gap-1.5 transition"
-              title="Mẫu thời khóa biểu có sẵn"
+              title="Thư viện mẫu thời khóa biểu"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium border border-zinc-200/70 dark:border-zinc-700/70 bg-white dark:bg-zinc-800/60 hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-zinc-600 dark:text-zinc-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
             >
-              <FolderOpen className="w-4 h-4 text-indigo-500" />
-              <span className="hidden xl:inline">Mẫu</span>
+              <FolderOpen className="w-3.5 h-3.5 text-indigo-500" />
+              <span className="hidden lg:inline">Mẫu</span>
             </button>
 
             {/* Analytics */}
             <button
               onClick={onOpenAnalytics}
-              className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center gap-1.5 transition"
-              title="Thống kê năng suất & AI Auto-balance"
+              title="Thống kê & Tối ưu hóa lịch trình"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium border border-zinc-200/70 dark:border-zinc-700/70 bg-white dark:bg-zinc-800/60 hover:border-purple-300 dark:hover:border-purple-700 hover:bg-purple-50 dark:hover:bg-purple-950/40 text-zinc-600 dark:text-zinc-300 hover:text-purple-600 dark:hover:text-purple-400 transition"
             >
-              <BarChart3 className="w-4 h-4 text-purple-500" />
-              <span className="hidden md:inline">Thống kê</span>
+              <BarChart3 className="w-3.5 h-3.5 text-purple-500" />
+              <span className="hidden md:inline">Lịch trình</span>
             </button>
 
-            {/* Online / Offline Status Badge */}
+            {/* Divider */}
+            <div className="w-px h-5 bg-zinc-200 dark:bg-zinc-700 mx-0.5" />
+
+            {/* AI Tools dropdown — chỉ chứa các tính năng AI nặng */}
+            <div className="relative" ref={toolsRef}>
+              <button
+                onClick={() => setIsToolsOpen((v) => !v)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer border ${
+                  isToolsOpen
+                    ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                    : "text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border-indigo-200/80 dark:border-indigo-800/80"
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">AI Tools</span>
+                <ChevronDown
+                  className={`w-3 h-3 transition-transform duration-200 ${isToolsOpen ? "rotate-180" : ""}`}
+                />
+              </button>
+
+              {isToolsOpen && (
+                <div className="absolute right-0 top-full mt-2 w-60 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+                  <div className="px-3 py-2 border-b border-zinc-100 dark:border-zinc-800">
+                    <span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest">
+                      Tính năng AI
+                    </span>
+                  </div>
+                  <div className="py-1">
+                    {aiTools.map((tool, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          tool.onClick?.();
+                          setIsToolsOpen(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/60 transition group"
+                      >
+                        <span className="text-zinc-400 dark:text-zinc-500 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 shrink-0 transition-colors">
+                          {tool.icon}
+                        </span>
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 group-hover:text-indigo-700 dark:group-hover:text-indigo-300 transition-colors">
+                            {tool.label}
+                          </div>
+                          <div className="text-[11px] text-zinc-400 dark:text-zinc-500 truncate">
+                            {tool.desc}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right side — status & auth */}
+          <div className="flex items-center gap-1 shrink-0">
+            {/* Online status */}
             <div
-              className={`p-2 rounded-xl text-xs flex items-center gap-1 ${
-                isOnline
-                  ? 'text-emerald-600 dark:text-emerald-400'
-                  : 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40'
-              }`}
-              title={isOnline ? 'Đang trực tuyến' : 'Chế độ ngoại tuyến (Offline mode)'}
+              className={`p-2 rounded-xl ${isOnline ? "text-emerald-500 dark:text-emerald-400" : "text-amber-500 dark:text-amber-400"}`}
+              title={isOnline ? "Đang trực tuyến" : "Ngoại tuyến"}
             >
-              {isOnline ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
+              {isOnline ? (
+                <Wifi className="w-4 h-4" />
+              ) : (
+                <WifiOff className="w-4 h-4" />
+              )}
             </div>
 
-            {/* Dark Mode toggle */}
+            {/* Dark mode */}
             <button
               onClick={onToggleDarkMode}
-              className="p-2 rounded-xl text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
-              aria-label="Chuyển chế độ sáng tối"
-              title="Chuyển chế độ sáng/tối"
+              className="p-2 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+              aria-label="Chuyển sáng/tối"
             >
-              {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
+              {isDarkMode ? (
+                <Sun className="w-4 h-4 text-amber-400" />
+              ) : (
+                <Moon className="w-4 h-4" />
+              )}
             </button>
 
-            {/* Google Authentication Section */}
+            {/* Auth */}
             {user && hasWorkspaceToken ? (
-              <div className="flex items-center gap-2 pl-2 border-l border-zinc-200 dark:border-zinc-700">
-                <div className="flex items-center gap-2" title={user.email || ''}>
-                  {user.photoURL ? (
-                    <img
-                      src={user.photoURL}
-                      alt={user.displayName || 'Avatar'}
-                      className="w-8 h-8 rounded-full border border-indigo-300 dark:border-indigo-600"
-                    />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs">
-                      {user.displayName?.charAt(0) || user.email?.charAt(0) || 'U'}
-                    </div>
-                  )}
-                  <span className="hidden 2xl:inline text-xs font-medium text-zinc-700 dark:text-zinc-300 max-w-[120px] truncate">
-                    {user.displayName || user.email}
-                  </span>
-                </div>
+              <div className="flex items-center gap-1 pl-1 border-l border-zinc-200 dark:border-zinc-700 ml-1">
+                {user.photoURL ? (
+                  <img
+                    src={user.photoURL}
+                    alt={user.displayName || "Avatar"}
+                    className="w-7 h-7 rounded-full border border-zinc-300 dark:border-zinc-600"
+                    title={user.email || ""}
+                  />
+                ) : (
+                  <div
+                    className="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs"
+                    title={user.email || ""}
+                  >
+                    {user.displayName?.charAt(0) ||
+                      user.email?.charAt(0) ||
+                      "U"}
+                  </div>
+                )}
                 <button
                   onClick={onLogout}
                   className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition"
                   title="Đăng xuất"
                 >
-                  <LogOut className="w-4 h-4" />
+                  <LogOut className="w-3.5 h-3.5" />
                 </button>
               </div>
             ) : (
-              /* Official Google Sign-in button format per guidelines */
               <button
                 type="button"
                 onClick={onLogin}
                 disabled={isLoggingIn}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 text-xs font-medium text-zinc-700 dark:text-zinc-200 shadow-xs transition cursor-pointer disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 text-xs font-medium text-zinc-700 dark:text-zinc-200 shadow-xs transition cursor-pointer disabled:opacity-60 ml-1"
               >
-                <svg className="w-4 h-4" viewBox="0 0 48 48">
+                <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 48 48">
                   <path
                     fill="#EA4335"
                     d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
@@ -332,7 +348,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                   />
                   <path fill="none" d="M0 0h48v48H0z" />
                 </svg>
-                <span>{isLoggingIn ? 'Đang kết nối...' : 'Kết nối Google'}</span>
+                <span className="hidden sm:inline">
+                  {isLoggingIn ? "Đang kết nối..." : "Kết nối Google"}
+                </span>
               </button>
             )}
           </div>

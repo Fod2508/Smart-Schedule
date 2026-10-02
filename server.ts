@@ -1,8 +1,8 @@
-import express from 'express';
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { GoogleGenAI, Type } from '@google/genai';
+import express from "express";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+import { GoogleGenAI, Type } from "@google/genai";
 
 dotenv.config();
 
@@ -12,46 +12,66 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: "10mb" }));
 
-// Initialize Google GenAI
-const ai = new GoogleGenAI();
-const PRIMARY_MODEL = 'gemini-3.8-flash';
-const LITE_MODEL = 'gemini-3.1-flash-lite';
+// Initialize Google GenAI với nhiều API keys để xoay vòng khi hết quota
+const API_KEYS = [
+  process.env.GEMINI_API_KEY_1,
+  process.env.GEMINI_API_KEY_2,
+  process.env.GEMINI_API_KEY_3,
+  process.env.GEMINI_API_KEY_4,
+  process.env.GEMINI_API_KEY_5,
+  process.env.GEMINI_API_KEY, // fallback key đơn
+].filter(Boolean) as string[];
+
+if (API_KEYS.length === 0) {
+  console.warn(
+    "[Smart Schedule] CẢNH BÁO: Không tìm thấy GEMINI_API_KEY. Các tính năng AI sẽ dùng fallback.",
+  );
+}
+
+const PRIMARY_MODEL = "gemini-2.0-flash";
+const LITE_MODEL = "gemini-2.0-flash-lite";
 
 async function callGeminiSafe(options: any) {
-  const models = [PRIMARY_MODEL, LITE_MODEL, 'gemini-flash-latest'];
+  const models = [PRIMARY_MODEL, LITE_MODEL, "gemini-1.5-flash"];
   let lastErr: any = null;
+
+  // Thử từng key × từng model — xoay vòng key trước, rồi mới xuống model
   for (const model of models) {
-    try {
-      return await ai.models.generateContent({
-        ...options,
-        model,
-      });
-    } catch (err: any) {
-      lastErr = err;
-      const msg = (err?.message || '').toLowerCase();
-      if (
-        msg.includes('resource_exhausted') ||
-        msg.includes('quota') ||
-        msg.includes('rate') ||
-        msg.includes('429') ||
-        msg.includes('overloaded')
-      ) {
-        console.warn(`Model ${model} rate/quota limited, trying next model...`);
-        continue;
+    for (const apiKey of API_KEYS) {
+      try {
+        const aiClient = new GoogleGenAI({ apiKey });
+        return await aiClient.models.generateContent({
+          ...options,
+          model,
+        });
+      } catch (err: any) {
+        lastErr = err;
+        const msg = (err?.message || "").toLowerCase();
+        if (
+          msg.includes("resource_exhausted") ||
+          msg.includes("quota") ||
+          msg.includes("rate") ||
+          msg.includes("429") ||
+          msg.includes("overloaded")
+        ) {
+          console.warn(`[AI] Key/Model ${model} quota limited, trying next...`);
+          continue; // Thử key tiếp theo
+        }
+        // Lỗi khác (không phải quota) → thử model tiếp theo
+        break;
       }
-      throw err;
     }
   }
   throw lastErr;
 }
 
 // AI Route 1: Natural Language Schedule Parser & Smart Scheduler
-app.post('/api/ai/parse-prompt', async (req, res) => {
+app.post("/api/ai/parse-prompt", async (req, res) => {
   const { prompt, currentEvents = [], userProfile = {}, weekStart } = req.body;
   if (!prompt) {
-    return res.status(400).json({ error: 'Thiếu nội dung yêu cầu (prompt)' });
+    return res.status(400).json({ error: "Thiếu nội dung yêu cầu (prompt)" });
   }
 
   try {
@@ -76,17 +96,18 @@ Yêu cầu logic quan trọng:
       contents: prompt,
       config: {
         systemInstruction,
-        responseMimeType: 'application/json',
+        responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
             reasoning: {
               type: Type.STRING,
-              description: 'Tóm tắt giải thích cách AI đã bố trí lịch',
+              description: "Tóm tắt giải thích cách AI đã bố trí lịch",
             },
             suggestedAction: {
               type: Type.STRING,
-              description: 'Hành động đề xuất (ví dụ: Đã xếp 3 buổi sáng thứ 3, 5, 7)',
+              description:
+                "Hành động đề xuất (ví dụ: Đã xếp 3 buổi sáng thứ 3, 5, 7)",
             },
             items: {
               type: Type.ARRAY,
@@ -95,33 +116,52 @@ Yêu cầu logic quan trọng:
                 properties: {
                   title: { type: Type.STRING },
                   description: { type: Type.STRING },
-                  startTime: { type: Type.STRING, description: 'ISO format YYYY-MM-DDTHH:mm:ss' },
-                  endTime: { type: Type.STRING, description: 'ISO format YYYY-MM-DDTHH:mm:ss' },
+                  startTime: {
+                    type: Type.STRING,
+                    description: "ISO format YYYY-MM-DDTHH:mm:ss",
+                  },
+                  endTime: {
+                    type: Type.STRING,
+                    description: "ISO format YYYY-MM-DDTHH:mm:ss",
+                  },
                   category: {
                     type: Type.STRING,
-                    enum: ['study', 'work', 'meeting', 'personal', 'break'],
+                    enum: ["study", "work", "meeting", "personal", "break"],
                   },
                   priority: {
                     type: Type.STRING,
-                    enum: ['high', 'medium', 'low'],
+                    enum: ["high", "medium", "low"],
                   },
                   hasMeet: { type: Type.BOOLEAN },
                   color: { type: Type.STRING },
-                  pomodoroBlocks: { type: Type.INTEGER, description: 'Số block pomodoro ước lượng' },
+                  pomodoroBlocks: {
+                    type: Type.INTEGER,
+                    description: "Số block pomodoro ước lượng",
+                  },
                 },
-                required: ['title', 'startTime', 'endTime', 'category', 'priority', 'hasMeet'],
+                required: [
+                  "title",
+                  "startTime",
+                  "endTime",
+                  "category",
+                  "priority",
+                  "hasMeet",
+                ],
               },
             },
           },
-          required: ['reasoning', 'items'],
+          required: ["reasoning", "items"],
         },
       },
     });
 
-    const parsedData = JSON.parse(response.text || '{}');
+    const parsedData = JSON.parse(response.text || "{}");
     return res.json(parsedData);
   } catch (error: any) {
-    console.warn('API error in parse-prompt, using smart deterministic fallback:', error?.message);
+    console.warn(
+      "API error in parse-prompt, using smart deterministic fallback:",
+      error?.message,
+    );
 
     // High quality deterministic rule-based fallback
     try {
@@ -135,7 +175,9 @@ Yêu cầu logic quan trọng:
 
       let startHour = 9;
       let endHour = 10;
-      const timeMatch = lower.match(/(?:từ\s*)?(\d{1,2})(?:h|:)(\d{0,2})?(?:\s*(?:đến|-)\s*(\d{1,2})(?:h|:)(\d{0,2})?)?/);
+      const timeMatch = lower.match(
+        /(?:từ\s*)?(\d{1,2})(?:h|:)(\d{0,2})?(?:\s*(?:đến|-)\s*(\d{1,2})(?:h|:)(\d{0,2})?)?/,
+      );
       if (timeMatch && timeMatch[1]) {
         startHour = parseInt(timeMatch[1], 10);
         if (timeMatch[3]) {
@@ -146,25 +188,78 @@ Yêu cầu logic quan trọng:
       }
 
       const dayOffsets: number[] = [];
-      if (lower.includes('thứ 2') || lower.includes('thứ hai') || lower.includes('t2')) dayOffsets.push(0);
-      if (lower.includes('thứ 3') || lower.includes('thứ ba') || lower.includes('t3')) dayOffsets.push(1);
-      if (lower.includes('thứ 4') || lower.includes('thứ tư') || lower.includes('t4')) dayOffsets.push(2);
-      if (lower.includes('thứ 5') || lower.includes('thứ năm') || lower.includes('t5')) dayOffsets.push(3);
-      if (lower.includes('thứ 6') || lower.includes('thứ sáu') || lower.includes('t6')) dayOffsets.push(4);
-      if (lower.includes('thứ 7') || lower.includes('thứ bảy') || lower.includes('t7')) dayOffsets.push(5);
-      if (lower.includes('chủ nhật') || lower.includes('cn')) dayOffsets.push(6);
+      if (
+        lower.includes("thứ 2") ||
+        lower.includes("thứ hai") ||
+        lower.includes("t2")
+      )
+        dayOffsets.push(0);
+      if (
+        lower.includes("thứ 3") ||
+        lower.includes("thứ ba") ||
+        lower.includes("t3")
+      )
+        dayOffsets.push(1);
+      if (
+        lower.includes("thứ 4") ||
+        lower.includes("thứ tư") ||
+        lower.includes("t4")
+      )
+        dayOffsets.push(2);
+      if (
+        lower.includes("thứ 5") ||
+        lower.includes("thứ năm") ||
+        lower.includes("t5")
+      )
+        dayOffsets.push(3);
+      if (
+        lower.includes("thứ 6") ||
+        lower.includes("thứ sáu") ||
+        lower.includes("t6")
+      )
+        dayOffsets.push(4);
+      if (
+        lower.includes("thứ 7") ||
+        lower.includes("thứ bảy") ||
+        lower.includes("t7")
+      )
+        dayOffsets.push(5);
+      if (lower.includes("chủ nhật") || lower.includes("cn"))
+        dayOffsets.push(6);
 
       if (dayOffsets.length === 0) {
         dayOffsets.push(0);
       }
 
-      let cat = 'study';
-      if (lower.includes('họp') || lower.includes('meet') || lower.includes('báo cáo')) cat = 'meeting';
-      else if (lower.includes('làm việc') || lower.includes('code') || lower.includes('dự án') || lower.includes('work')) cat = 'work';
-      else if (lower.includes('gym') || lower.includes('chạy') || lower.includes('cá nhân') || lower.includes('nghỉ')) cat = 'personal';
+      let cat = "study";
+      if (
+        lower.includes("họp") ||
+        lower.includes("meet") ||
+        lower.includes("báo cáo")
+      )
+        cat = "meeting";
+      else if (
+        lower.includes("làm việc") ||
+        lower.includes("code") ||
+        lower.includes("dự án") ||
+        lower.includes("work")
+      )
+        cat = "work";
+      else if (
+        lower.includes("gym") ||
+        lower.includes("chạy") ||
+        lower.includes("cá nhân") ||
+        lower.includes("nghỉ")
+      )
+        cat = "personal";
 
-      const hasMeet = lower.includes('họp') || lower.includes('meet') || lower.includes('zoom') || lower.includes('online');
-      const cleanTitle = prompt.length > 50 ? prompt.substring(0, 47) + '...' : prompt;
+      const hasMeet =
+        lower.includes("họp") ||
+        lower.includes("meet") ||
+        lower.includes("zoom") ||
+        lower.includes("online");
+      const cleanTitle =
+        prompt.length > 50 ? prompt.substring(0, 47) + "..." : prompt;
 
       dayOffsets.forEach((offset) => {
         const s = new Date(monday);
@@ -180,7 +275,7 @@ Yêu cầu logic quan trọng:
           startTime: s.toISOString(),
           endTime: e.toISOString(),
           category: cat,
-          priority: 'medium',
+          priority: "medium",
           hasMeet,
           pomodoroBlocks: Math.max(1, Math.round((endHour - startHour) * 2)),
         });
@@ -192,13 +287,15 @@ Yêu cầu logic quan trọng:
         items,
       });
     } catch (fallbackErr: any) {
-      return res.status(500).json({ error: error.message || 'Lỗi xử lý yêu cầu' });
+      return res
+        .status(500)
+        .json({ error: error.message || "Lỗi xử lý yêu cầu" });
     }
   }
 });
 
 // AI Route 2: Auto-balance & Break Optimizer
-app.post('/api/ai/optimize-schedule', async (req, res) => {
+app.post("/api/ai/optimize-schedule", async (req, res) => {
   const { events = [], userProfile = {} } = req.body;
 
   try {
@@ -215,7 +312,7 @@ Hãy đưa ra:
       contents: `Tối ưu hóa lịch trình sau:\n${JSON.stringify(events, null, 2)}`,
       config: {
         systemInstruction,
-        responseMimeType: 'application/json',
+        responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
@@ -239,28 +336,39 @@ Hãy đưa ra:
                   hasMeet: { type: Type.BOOLEAN },
                   isBreak: { type: Type.BOOLEAN },
                 },
-                required: ['title', 'startTime', 'endTime', 'category', 'priority'],
+                required: [
+                  "title",
+                  "startTime",
+                  "endTime",
+                  "category",
+                  "priority",
+                ],
               },
             },
           },
-          required: ['productivityScore', 'scoreExplanation', 'suggestions', 'optimizedEvents'],
+          required: [
+            "productivityScore",
+            "scoreExplanation",
+            "suggestions",
+            "optimizedEvents",
+          ],
         },
       },
     });
 
-    const parsedData = JSON.parse(response.text || '{}');
+    const parsedData = JSON.parse(response.text || "{}");
     return res.json(parsedData);
   } catch (error: any) {
-    console.warn('Error in optimize-schedule, using fallback:', error?.message);
+    console.warn("Error in optimize-schedule, using fallback:", error?.message);
     const completedCount = events.filter((e: any) => e.isCompleted).length;
     const baseScore = Math.min(95, Math.max(65, 75 + completedCount * 5));
     return res.json({
       productivityScore: baseScore,
       scoreExplanation: `Lịch trình được tối ưu hóa cân bằng giữa thời gian tập trung và nghỉ ngơi (Điểm: ${baseScore}/100).`,
       suggestions: [
-        'Duy trì các khoảng nghỉ 10-15 phút giữa các buổi làm việc kéo dài hơn 90 phút.',
-        'Xếp nhiệm vụ khó và đòi hỏi tập trung cao vào đầu ngày khi năng lượng dồi dào nhất.',
-        'Dành 20-30 phút sau bữa trưa để thả lỏng cơ thể và phục hồi tinh thần.',
+        "Duy trì các khoảng nghỉ 10-15 phút giữa các buổi làm việc kéo dài hơn 90 phút.",
+        "Xếp nhiệm vụ khó và đòi hỏi tập trung cao vào đầu ngày khi năng lượng dồi dào nhất.",
+        "Dành 20-30 phút sau bữa trưa để thả lỏng cơ thể và phục hồi tinh thần.",
       ],
       optimizedEvents: events,
     });
@@ -268,7 +376,7 @@ Hãy đưa ra:
 });
 
 // AI Route 3: Conflict Resolution
-app.post('/api/ai/resolve-conflicts', async (req, res) => {
+app.post("/api/ai/resolve-conflicts", async (req, res) => {
   const { conflictA, conflictB, allEvents = [] } = req.body;
 
   try {
@@ -284,11 +392,14 @@ Hãy phân tích mức độ ưu tiên, tính chất cuộc hẹn, và đề xu�
     const response = await callGeminiSafe({
       contents: prompt,
       config: {
-        responseMimeType: 'application/json',
+        responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            analysis: { type: Type.STRING, description: 'Phân tích nguyên nhân và ảnh hưởng' },
+            analysis: {
+              type: Type.STRING,
+              description: "Phân tích nguyên nhân và ảnh hưởng",
+            },
             options: {
               type: Type.ARRAY,
               items: {
@@ -299,28 +410,39 @@ Hãy phân tích mức độ ưu tiên, tính chất cuộc hẹn, và đề xu�
                   description: { type: Type.STRING },
                   pros: { type: Type.STRING },
                   cons: { type: Type.STRING },
-                  actionType: { type: Type.STRING, enum: ['shift_event_a', 'shift_event_b', 'shorten', 'split'] },
+                  actionType: {
+                    type: Type.STRING,
+                    enum: [
+                      "shift_event_a",
+                      "shift_event_b",
+                      "shorten",
+                      "split",
+                    ],
+                  },
                   suggestedStartTime: { type: Type.STRING },
                   suggestedEndTime: { type: Type.STRING },
                   targetEventId: { type: Type.STRING },
                 },
-                required: ['id', 'title', 'description', 'actionType'],
+                required: ["id", "title", "description", "actionType"],
               },
             },
           },
-          required: ['analysis', 'options'],
+          required: ["analysis", "options"],
         },
       },
     });
 
-    const parsedData = JSON.parse(response.text || '{}');
+    const parsedData = JSON.parse(response.text || "{}");
     return res.json(parsedData);
   } catch (error: any) {
-    console.warn('Error in resolve-conflicts, using fallback:', error?.message);
-    const titleA = conflictA?.title || 'Sự kiện 1';
-    const titleB = conflictB?.title || 'Sự kiện 2';
+    console.warn("Error in resolve-conflicts, using fallback:", error?.message);
+    const titleA = conflictA?.title || "Sự kiện 1";
+    const titleB = conflictB?.title || "Sự kiện 2";
     const endA = new Date(conflictA?.endTime || Date.now());
-    const durB = (new Date(conflictB?.endTime || Date.now()).getTime() - new Date(conflictB?.startTime || Date.now()).getTime()) || (60 * 60 * 1000);
+    const durB =
+      new Date(conflictB?.endTime || Date.now()).getTime() -
+        new Date(conflictB?.startTime || Date.now()).getTime() ||
+      60 * 60 * 1000;
     const shiftedStartB = endA;
     const shiftedEndB = new Date(shiftedStartB.getTime() + durB);
 
@@ -328,23 +450,23 @@ Hãy phân tích mức độ ưu tiên, tính chất cuộc hẹn, và đề xu�
       analysis: `Xung đột thời gian giữa "${titleA}" và "${titleB}". Cần điều chỉnh giờ để tránh chồng chéo.`,
       options: [
         {
-          id: 'opt-shift-b',
+          id: "opt-shift-b",
           title: `Dời "${titleB}" bắt đầu ngay sau khi "${titleA}" kết thúc`,
-          description: `Bắt đầu lúc ${shiftedStartB.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}, kết thúc lúc ${shiftedEndB.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}.`,
-          pros: 'Bảo toàn thời lượng gốc của cả 2 sự kiện.',
-          cons: 'Sự kiện sau kết thúc muộn hơn kế hoạch ban đầu.',
-          actionType: 'shift_event_b',
+          description: `Bắt đầu lúc ${shiftedStartB.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}, kết thúc lúc ${shiftedEndB.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}.`,
+          pros: "Bảo toàn thời lượng gốc của cả 2 sự kiện.",
+          cons: "Sự kiện sau kết thúc muộn hơn kế hoạch ban đầu.",
+          actionType: "shift_event_b",
           suggestedStartTime: shiftedStartB.toISOString(),
           suggestedEndTime: shiftedEndB.toISOString(),
           targetEventId: conflictB?.id,
         },
         {
-          id: 'opt-shorten-a',
+          id: "opt-shorten-a",
           title: `Rút ngắn "${titleA}" để kết thúc khi "${titleB}" bắt đầu`,
-          description: `Rút ngắn kết thúc lúc ${new Date(conflictB?.startTime || Date.now()).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}.`,
-          pros: 'Không làm thay đổi giờ của sự kiện thứ hai.',
-          cons: 'Sự kiện đầu tiên bị rút ngắn thời gian.',
-          actionType: 'shorten',
+          description: `Rút ngắn kết thúc lúc ${new Date(conflictB?.startTime || Date.now()).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}.`,
+          pros: "Không làm thay đổi giờ của sự kiện thứ hai.",
+          cons: "Sự kiện đầu tiên bị rút ngắn thời gian.",
+          actionType: "shorten",
           suggestedStartTime: conflictA?.startTime,
           suggestedEndTime: conflictB?.startTime,
           targetEventId: conflictA?.id,
@@ -355,11 +477,10 @@ Hãy phân tích mức độ ưu tiên, tính chất cuộc hẹn, và đề xu�
 });
 
 // AI Route 4: Generate Digest Email for Gmail
-app.post('/api/ai/generate-email-summary', async (req, res) => {
+app.post("/api/ai/generate-email-summary", async (req, res) => {
+  const { events = [], period = "today", recipientName = "Bạn" } = req.body;
   try {
-    const { events = [], period = 'today', recipientName = 'Bạn' } = req.body;
-
-    const prompt = `Soạn thảo một email tổng hợp lịch trình (${period === 'today' ? 'Hôm nay' : 'Tuần này'}) cho người dùng:
+    const prompt = `Soạn thảo một email tổng hợp lịch trình (${period === "today" ? "Hôm nay" : "Tuần này"}) cho người dùng:
 Tên: ${recipientName}
 Danh sách các sự kiện/nhiệm vụ:
 ${JSON.stringify(events, null, 2)}
@@ -376,7 +497,7 @@ Yêu cầu:
     const response = await callGeminiSafe({
       contents: prompt,
       config: {
-        responseMimeType: 'application/json',
+        responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
@@ -384,24 +505,27 @@ Yêu cầu:
             htmlBody: { type: Type.STRING },
             plainTextSummary: { type: Type.STRING },
           },
-          required: ['subject', 'htmlBody', 'plainTextSummary'],
+          required: ["subject", "htmlBody", "plainTextSummary"],
         },
       },
     });
 
-    const parsedData = JSON.parse(response.text || '{}');
+    const parsedData = JSON.parse(response.text || "{}");
     return res.json(parsedData);
   } catch (error: any) {
-    console.warn('Error generating email summary, using fallback:', error?.message);
+    console.warn(
+      "Error generating email summary, using fallback:",
+      error?.message,
+    );
     const eventCount = events.length;
     return res.json({
-      subject: `📅 Tổng kết lịch trình ${period === 'today' ? 'hôm nay' : 'tuần này'} (${eventCount} sự kiện)`,
+      subject: `📅 Tổng kết lịch trình ${period === "today" ? "hôm nay" : "tuần này"} (${eventCount} sự kiện)`,
       htmlBody: `
         <div style="font-family: sans-serif; line-height: 1.6; color: #1f2937;">
           <h2 style="color: #4f46e5;">Chào ${recipientName}! 👋</h2>
-          <p>Dưới đây là tổng hợp lịch trình ${period === 'today' ? 'trong ngày hôm nay' : 'trong tuần'} của bạn:</p>
+          <p>Dưới đây là tổng hợp lịch trình ${period === "today" ? "trong ngày hôm nay" : "trong tuần"} của bạn:</p>
           <ul>
-            ${events.map((e: any) => `<li><strong>${e.title}</strong> (${new Date(e.startTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})</li>`).join('')}
+            ${events.map((e: any) => `<li><strong>${e.title}</strong> (${new Date(e.startTime).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })})</li>`).join("")}
           </ul>
           <p style="color: #6b7280; font-size: 13px;">Chúc bạn một ngày làm việc và học tập hiệu quả, tràn đầy năng lượng! ✨</p>
         </div>
@@ -412,26 +536,31 @@ Yêu cầu:
 });
 
 // AI Route 5: OCR Timetable from Image or PDF
-app.post('/api/ai/ocr-schedule', async (req, res) => {
+app.post("/api/ai/ocr-schedule", async (req, res) => {
   try {
-    const { imageBase64, mimeType = 'image/jpeg', weekStart, userNote } = req.body;
+    const {
+      imageBase64,
+      mimeType = "image/jpeg",
+      weekStart,
+      userNote,
+    } = req.body;
     if (!imageBase64) {
-      return res.status(400).json({ error: 'Thiếu dữ liệu ảnh hoặc file PDF' });
+      return res.status(400).json({ error: "Thiếu dữ liệu ảnh hoặc file PDF" });
     }
 
     // Strip data URL header if present
-    const base64Data = imageBase64.replace(/^data:[a-zA-Z0-9/+-]+;base64,/, '');
+    const base64Data = imageBase64.replace(/^data:[a-zA-Z0-9/+-]+;base64,/, "");
 
     const systemInstruction = `Bạn là Trợ lý OCR và Xếp thời khóa biểu thông minh (Smart Schedule Multimodal OCR).
 Nhiệm vụ của bạn là nhận diện, bóc tách và phân tích ảnh chụp/ảnh chụp màn hình/tài liệu PDF thời khóa biểu học tập, lịch công tác, lịch thi của trường học hoặc tổ chức.
 
 Ngữ cảnh:
 - Ngày đầu tuần hiện tại: ${weekStart || new Date().toISOString()}
-- Ghi chú bổ sung từ người dùng: ${userNote || 'Không có'}
+- Ghi chú bổ sung từ người dùng: ${userNote || "Không có"}
 
 Quy tắc phân tích:
 1. Đọc kỹ các bảng cột trong ảnh: Thứ 2 (Mon) đến Chủ nhật (Sun), Tiết học/Khung giờ (ví dụ: Tiết 1-3 = 07:00-09:30, hoặc ghi rõ giờ 07:30 - 09:15), Tên môn học, Mã phòng học, Tên giảng viên.
-2. Ánh xạ các ngày trong tuần trong ảnh (Thứ 2, Thứ 3, ..., Thứ 7, CN) vào đúng các ngày thực tế của tuần ${weekStart || 'hiện tại'}. Giữ đúng định dạng ISO YYYY-MM-DDTHH:mm:ss.
+2. Ánh xạ các ngày trong tuần trong ảnh (Thứ 2, Thứ 3, ..., Thứ 7, CN) vào đúng các ngày thực tế của tuần ${weekStart || "hiện tại"}. Giữ đúng định dạng ISO YYYY-MM-DDTHH:mm:ss.
 3. Nếu ảnh là lịch học online (ghi Zoom, Meet, Teams, trực tuyến) hãy bật hasMeet = true.
 4. Gán category chính xác: "study" (học tập, lên lớp, thi), "work" (dạy học, chấm bài, công tác), "meeting" (họp, sinh hoạt lớp), "personal", "break".
 5. Bóc tách phòng học/địa điểm vào trường "location" (ví dụ: "Phòng A302", "Giảng đường B").
@@ -441,7 +570,7 @@ Quy tắc phân tích:
     const response = await callGeminiSafe({
       contents: [
         {
-          role: 'user',
+          role: "user",
           parts: [
             {
               inlineData: {
@@ -450,20 +579,21 @@ Quy tắc phân tích:
               },
             },
             {
-              text: 'Hãy đọc và trích xuất toàn bộ thời khóa biểu, lịch học, lịch thi từ tài liệu này.',
+              text: "Hãy đọc và trích xuất toàn bộ thời khóa biểu, lịch học, lịch thi từ tài liệu này.",
             },
           ],
         },
       ],
       config: {
         systemInstruction,
-        responseMimeType: 'application/json',
+        responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
             summary: {
               type: Type.STRING,
-              description: 'Mô tả tóm tắt những gì AI đã trích xuất được từ ảnh',
+              description:
+                "Mô tả tóm tắt những gì AI đã trích xuất được từ ảnh",
             },
             totalItemsDetected: { type: Type.INTEGER },
             items: {
@@ -473,49 +603,79 @@ Quy tắc phân tích:
                 properties: {
                   title: { type: Type.STRING },
                   description: { type: Type.STRING },
-                  startTime: { type: Type.STRING, description: 'ISO format YYYY-MM-DDTHH:mm:ss' },
-                  endTime: { type: Type.STRING, description: 'ISO format YYYY-MM-DDTHH:mm:ss' },
+                  startTime: {
+                    type: Type.STRING,
+                    description: "ISO format YYYY-MM-DDTHH:mm:ss",
+                  },
+                  endTime: {
+                    type: Type.STRING,
+                    description: "ISO format YYYY-MM-DDTHH:mm:ss",
+                  },
                   category: {
                     type: Type.STRING,
-                    enum: ['study', 'work', 'meeting', 'personal', 'break'],
+                    enum: ["study", "work", "meeting", "personal", "break"],
                   },
                   priority: {
                     type: Type.STRING,
-                    enum: ['high', 'medium', 'low'],
+                    enum: ["high", "medium", "low"],
                   },
                   location: { type: Type.STRING },
                   hasMeet: { type: Type.BOOLEAN },
                   pomodoroBlocks: { type: Type.INTEGER },
                 },
-                required: ['title', 'startTime', 'endTime', 'category', 'priority', 'hasMeet'],
+                required: [
+                  "title",
+                  "startTime",
+                  "endTime",
+                  "category",
+                  "priority",
+                  "hasMeet",
+                ],
               },
             },
           },
-          required: ['summary', 'totalItemsDetected', 'items'],
+          required: ["summary", "totalItemsDetected", "items"],
         },
       },
     });
 
-    const parsedData = JSON.parse(response.text || '{}');
+    const parsedData = JSON.parse(response.text || "{}");
     return res.json(parsedData);
   } catch (error: any) {
-    console.error('Error in OCR schedule endpoint:', error);
-    return res.status(500).json({ error: error.message || 'Lỗi nhận diện ảnh thời khóa biểu' });
+    console.error("Error in OCR schedule endpoint:", error);
+    const isApiKeyError =
+      !process.env.GEMINI_API_KEY ||
+      process.env.GEMINI_API_KEY === "your_gemini_api_key_here";
+    if (isApiKeyError) {
+      return res.status(503).json({
+        error:
+          "Tính năng OCR cần Gemini API Key. Vui lòng thêm GEMINI_API_KEY vào file .env",
+        summary: "Chưa cấu hình API Key",
+        totalItemsDetected: 0,
+        items: [],
+      });
+    }
+    return res.status(500).json({
+      error:
+        error.message || "Lỗi nhận diện ảnh thời khóa biểu. Vui lòng thử lại.",
+      summary: "Không thể nhận diện ảnh",
+      totalItemsDetected: 0,
+      items: [],
+    });
   }
 });
 
 // AI Route 6: Team Free Slot Finder & Meeting Poll
-app.post('/api/ai/find-team-slots', async (req, res) => {
+app.post("/api/ai/find-team-slots", async (req, res) => {
+  const {
+    meetingTitle = "Họp Nhóm",
+    durationMinutes = 60,
+    attendees = [],
+    currentEvents = [],
+    memberConstraints = "",
+    weekStart,
+  } = req.body;
   try {
-    const {
-      meetingTitle = 'Họp Nhóm',
-      durationMinutes = 60,
-      attendees = [],
-      currentEvents = [],
-      memberConstraints = '',
-      weekStart,
-    } = req.body;
-
     const systemInstruction = `Bạn là Trợ lý Điều phối Cuộc họp & Tìm giờ trống chung cho Team (Team Smart Meeting Finder AI).
 Nhiệm vụ của bạn là phân tích lịch trình hiện tại của người tổ chức và các ràng buộc, thời gian rảnh/bận của các thành viên trong nhóm, từ đó đề xuất 3 đến 4 khung giờ vàng (candidate slots) tốt nhất để họp.
 
@@ -525,7 +685,7 @@ Ngữ cảnh:
 - Thời lượng: ${durationMinutes} phút
 - Danh sách thành viên tham gia: ${JSON.stringify(attendees)}
 - Lịch trình đã có của người tổ chức: ${JSON.stringify(currentEvents.map((e: any) => ({ title: e.title, start: e.startTime, end: e.endTime })))}
-- Ràng buộc hoặc ghi chú thời gian của các thành viên: ${memberConstraints || 'Không có ràng buộc đặc biệt, ưu tiên khung giờ hành chính làm việc hiệu quả'}
+- Ràng buộc hoặc ghi chú thời gian của các thành viên: ${memberConstraints || "Không có ràng buộc đặc biệt, ưu tiên khung giờ hành chính làm việc hiệu quả"}
 
 Quy tắc tìm kiếm:
 1. KHÔNG được trùng vào các lịch đã có của người tổ chức.
@@ -538,13 +698,14 @@ Quy tắc tìm kiếm:
       contents: `Hãy tìm các khung giờ trống lý tưởng nhất cho cuộc họp "${meetingTitle}" kéo dài ${durationMinutes} phút.`,
       config: {
         systemInstruction,
-        responseMimeType: 'application/json',
+        responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
             reasoning: {
               type: Type.STRING,
-              description: 'Phân tích tổng quan về việc bố trí giờ họp cho nhóm',
+              description:
+                "Phân tích tổng quan về việc bố trí giờ họp cho nhóm",
             },
             candidateSlots: {
               type: Type.ARRAY,
@@ -552,54 +713,72 @@ Quy tắc tìm kiếm:
                 type: Type.OBJECT,
                 properties: {
                   id: { type: Type.STRING },
-                  startTime: { type: Type.STRING, description: 'ISO format YYYY-MM-DDTHH:mm:ss' },
-                  endTime: { type: Type.STRING, description: 'ISO format YYYY-MM-DDTHH:mm:ss' },
-                  matchScore: { type: Type.INTEGER, description: 'Độ phù hợp từ 0-100' },
+                  startTime: {
+                    type: Type.STRING,
+                    description: "ISO format YYYY-MM-DDTHH:mm:ss",
+                  },
+                  endTime: {
+                    type: Type.STRING,
+                    description: "ISO format YYYY-MM-DDTHH:mm:ss",
+                  },
+                  matchScore: {
+                    type: Type.INTEGER,
+                    description: "Độ phù hợp từ 0-100",
+                  },
                   suitabilityReason: { type: Type.STRING },
                   pros: { type: Type.STRING },
                   recommended: { type: Type.BOOLEAN },
                 },
-                required: ['id', 'startTime', 'endTime', 'matchScore', 'suitabilityReason', 'recommended'],
+                required: [
+                  "id",
+                  "startTime",
+                  "endTime",
+                  "matchScore",
+                  "suitabilityReason",
+                  "recommended",
+                ],
               },
             },
             pollSummaryText: {
               type: Type.STRING,
-              description: 'Nội dung bảng khảo sát giờ họp định dạng text đẹp để gửi vào group chat',
+              description:
+                "Nội dung bảng khảo sát giờ họp định dạng text đẹp để gửi vào group chat",
             },
           },
-          required: ['reasoning', 'candidateSlots', 'pollSummaryText'],
+          required: ["reasoning", "candidateSlots", "pollSummaryText"],
         },
       },
     });
 
-    const parsedData = JSON.parse(response.text || '{}');
+    const parsedData = JSON.parse(response.text || "{}");
     return res.json(parsedData);
   } catch (error: any) {
-    console.warn('Error finding team slots, using fallback:', error?.message);
+    console.warn("Error finding team slots, using fallback:", error?.message);
     const baseDate = new Date();
     const candidateSlots = [
       {
-        id: 'slot-1',
+        id: "slot-1",
         startTime: new Date(baseDate.setHours(9, 30, 0, 0)).toISOString(),
         endTime: new Date(baseDate.setHours(10, 30, 0, 0)).toISOString(),
         matchScore: 95,
-        suitabilityReason: 'Khung giờ vàng buổi sáng, tinh thần minh mẫn, không vướng giờ ăn trưa.',
-        pros: 'Thời điểm năng lượng cao nhất cho họp nhóm thảo luận ý tưởng.',
+        suitabilityReason:
+          "Khung giờ vàng buổi sáng, tinh thần minh mẫn, không vướng giờ ăn trưa.",
+        pros: "Thời điểm năng lượng cao nhất cho họp nhóm thảo luận ý tưởng.",
         recommended: true,
       },
       {
-        id: 'slot-2',
+        id: "slot-2",
         startTime: new Date(baseDate.setHours(14, 30, 0, 0)).toISOString(),
         endTime: new Date(baseDate.setHours(15, 30, 0, 0)).toISOString(),
         matchScore: 88,
-        suitabilityReason: 'Đầu giờ chiều sau khi đã hoàn thành giờ nghỉ trưa.',
-        pros: 'Phù hợp cập nhật tiến độ công việc trong ngày.',
+        suitabilityReason: "Đầu giờ chiều sau khi đã hoàn thành giờ nghỉ trưa.",
+        pros: "Phù hợp cập nhật tiến độ công việc trong ngày.",
         recommended: false,
       },
     ];
 
     return res.json({
-      reasoning: 'Đã tìm thấy 2 khung giờ trống tối ưu cho nhóm thảo luận.',
+      reasoning: "Đã tìm thấy 2 khung giờ trống tối ưu cho nhóm thảo luận.",
       candidateSlots,
       pollSummaryText: `📊 Bình chọn giờ họp "${meetingTitle}":\n1️⃣ Sáng 09:30 - 10:30\n2️⃣ Chiều 14:30 - 15:30\n👉 Mọi người vào bình chọn giúp mình nhé!`,
     });
@@ -607,23 +786,22 @@ Quy tắc tìm kiếm:
 });
 
 // AI Route 7: Smart Auto-Reschedule when Delayed (Dời lịch thông minh khi bị trễ việc)
-app.post('/api/ai/smart-reschedule', async (req, res) => {
+app.post("/api/ai/smart-reschedule", async (req, res) => {
+  const {
+    delayedEventId,
+    delayMinutes = 45,
+    reason = "Việc trước kéo dài hơn dự kiến",
+    strategy = "prioritize", // 'prioritize' | 'push_all' | 'overflow_tomorrow'
+    currentEvents = [],
+    targetDate = new Date().toISOString(),
+  } = req.body;
   try {
-    const {
-      delayedEventId,
-      delayMinutes = 45,
-      reason = 'Việc trước kéo dài hơn dự kiến',
-      strategy = 'prioritize', // 'prioritize' | 'push_all' | 'overflow_tomorrow'
-      currentEvents = [],
-      targetDate = new Date().toISOString(),
-    } = req.body;
-
     const systemInstruction = `Bạn là Trợ lý Điều phối Lịch trình AI Chuyên sâu (Smart Auto-Reschedule AI).
 Nhiệm vụ của bạn là giải quyết "hiệu ứng Domino" khi một công việc bị trễ hoặc kéo dài thêm thời gian, giúp người dùng sắp xếp lại toàn bộ các công việc tiếp theo một cách khoa học, thông minh, không bị quá tải và không bỏ lỡ các việc quan trọng.
 
 Thông tin bối cảnh:
 - Ngày xảy ra trễ việc: ${targetDate}
-- ID sự kiện bị trễ: ${delayedEventId || 'Không xác định (trễ từ thời điểm hiện tại)'}
+- ID sự kiện bị trễ: ${delayedEventId || "Không xác định (trễ từ thời điểm hiện tại)"}
 - Số phút bị trễ/kéo dài: ${delayMinutes} phút
 - Lý do trễ: ${reason}
 - Chiến lược người dùng chọn:
@@ -631,15 +809,17 @@ Thông tin bối cảnh:
   * "push_all": Đẩy lùi nối tiếp - Tịnh tiến lùi tất cả các sự kiện tiếp theo đúng ${delayMinutes} phút, giữ nguyên thời lượng của từng việc.
   * "overflow_tomorrow": Dời sang ngày mai - Giữ các việc quan trọng trong ngày, dời các việc linh hoạt/ưu tiên thấp sang ngày hôm sau để người dùng được nghỉ ngơi đúng giờ, tránh thức khuya làm việc quá sức.
 - Danh sách sự kiện hiện tại:
-${JSON.stringify(currentEvents.map((e: any) => ({
-  id: e.id,
-  title: e.title,
-  startTime: e.startTime,
-  endTime: e.endTime,
-  category: e.category,
-  priority: e.priority,
-  hasMeet: e.hasMeet,
-})))}
+${JSON.stringify(
+  currentEvents.map((e: any) => ({
+    id: e.id,
+    title: e.title,
+    startTime: e.startTime,
+    endTime: e.endTime,
+    category: e.category,
+    priority: e.priority,
+    hasMeet: e.hasMeet,
+  })),
+)}
 
 Quy tắc thực hiện:
 1. Xác định sự kiện bị trễ: Nếu có delayedEventId, kéo dài endTime của sự kiện đó thêm ${delayMinutes} phút (hoặc dời nó theo lý do).
@@ -656,17 +836,18 @@ Quy tắc thực hiện:
       contents: `Hãy dời lịch và tái cấu trúc các sự kiện bị ảnh hưởng do trễ ${delayMinutes} phút (Lý do: "${reason}", Chiến lược: "${strategy}").`,
       config: {
         systemInstruction,
-        responseMimeType: 'application/json',
+        responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
             explanation: {
               type: Type.STRING,
-              description: 'Lời giải thích và phân tích giải pháp dời lịch của AI',
+              description:
+                "Lời giải thích và phân tích giải pháp dời lịch của AI",
             },
             impactSummary: {
               type: Type.STRING,
-              description: 'Tóm tắt ngắn gọn các tác động của việc dời lịch',
+              description: "Tóm tắt ngắn gọn các tác động của việc dời lịch",
             },
             changes: {
               type: Type.ARRAY,
@@ -679,11 +860,24 @@ Quy tắc thực hiện:
                   newTime: { type: Type.STRING },
                   action: {
                     type: Type.STRING,
-                    enum: ['delayed', 'shifted', 'shortened', 'moved_to_tomorrow', 'unchanged'],
+                    enum: [
+                      "delayed",
+                      "shifted",
+                      "shortened",
+                      "moved_to_tomorrow",
+                      "unchanged",
+                    ],
                   },
                   reason: { type: Type.STRING },
                 },
-                required: ['eventId', 'title', 'originalTime', 'newTime', 'action', 'reason'],
+                required: [
+                  "eventId",
+                  "title",
+                  "originalTime",
+                  "newTime",
+                  "action",
+                  "reason",
+                ],
               },
             },
             updatedEvents: {
@@ -698,11 +892,11 @@ Quy tắc thực hiện:
                   endTime: { type: Type.STRING },
                   category: {
                     type: Type.STRING,
-                    enum: ['study', 'work', 'meeting', 'personal', 'break'],
+                    enum: ["study", "work", "meeting", "personal", "break"],
                   },
                   priority: {
                     type: Type.STRING,
-                    enum: ['high', 'medium', 'low'],
+                    enum: ["high", "medium", "low"],
                   },
                   location: { type: Type.STRING },
                   hasMeet: { type: Type.BOOLEAN },
@@ -711,19 +905,35 @@ Quy tắc thực hiện:
                   isSyncedToGoogle: { type: Type.BOOLEAN },
                   googleEventId: { type: Type.STRING },
                 },
-                required: ['id', 'title', 'startTime', 'endTime', 'category', 'priority', 'hasMeet'],
+                required: [
+                  "id",
+                  "title",
+                  "startTime",
+                  "endTime",
+                  "category",
+                  "priority",
+                  "hasMeet",
+                ],
               },
             },
           },
-          required: ['explanation', 'impactSummary', 'changes', 'updatedEvents'],
+          required: [
+            "explanation",
+            "impactSummary",
+            "changes",
+            "updatedEvents",
+          ],
         },
       },
     });
 
-    const parsedData = JSON.parse(response.text || '{}');
+    const parsedData = JSON.parse(response.text || "{}");
     return res.json(parsedData);
   } catch (error: any) {
-    console.warn('Error in smart reschedule endpoint, using fallback:', error?.message);
+    console.warn(
+      "Error in smart reschedule endpoint, using fallback:",
+      error?.message,
+    );
     const delayMs = (delayMinutes || 30) * 60 * 1000;
     const changes: any[] = [];
     let delayedFound = false;
@@ -738,9 +948,9 @@ Quy tắc thực hiện:
         changes.push({
           eventId: ev.id,
           title: ev.title,
-          originalTime: `${origStart.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - ${origEnd.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
-          newTime: `${origStart.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - ${newEnd.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
-          action: 'delayed',
+          originalTime: `${origStart.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} - ${origEnd.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}`,
+          newTime: `${origStart.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} - ${newEnd.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}`,
+          action: "delayed",
           reason: `Kéo dài thêm ${delayMinutes} phút: ${reason}`,
         });
         return { ...ev, endTime: newEnd.toISOString() };
@@ -752,12 +962,16 @@ Quy tắc thực hiện:
         changes.push({
           eventId: ev.id,
           title: ev.title,
-          originalTime: `${origStart.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - ${origEnd.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
-          newTime: `${newStart.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - ${newEnd.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
-          action: 'shifted',
+          originalTime: `${origStart.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} - ${origEnd.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}`,
+          newTime: `${newStart.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} - ${newEnd.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}`,
+          action: "shifted",
           reason: `Tịnh tiến dời lùi ${delayMinutes} phút để tránh xung đột lịch`,
         });
-        return { ...ev, startTime: newStart.toISOString(), endTime: newEnd.toISOString() };
+        return {
+          ...ev,
+          startTime: newStart.toISOString(),
+          endTime: newEnd.toISOString(),
+        };
       }
 
       return ev;
@@ -773,13 +987,9 @@ Quy tắc thực hiện:
 });
 
 // AI Route 8: AI Energy-to-Task Matcher (Xếp lịch theo năng lượng sinh học)
-app.post('/api/ai/match-energy', async (req, res) => {
+app.post("/api/ai/match-energy", async (req, res) => {
   try {
-    const {
-      events = [],
-      chronotype = 'balanced',
-      weekStart,
-    } = req.body;
+    const { events = [], chronotype = "balanced", weekStart } = req.body;
 
     const systemInstruction = `Bạn là Chuyên gia Khoa học Nhịp sinh học & Hiệu suất Cá nhân (Chronobiology & High Performance Coach AI).
 Nhiệm vụ của bạn là rà soát lịch trình của người dùng, phân tích mức độ phù hợp sinh học (Energy-to-Task Alignment) và tự động xếp lại lịch dựa trên Chronotype:
@@ -810,7 +1020,7 @@ YÊU CẦU ĐẦU RA:
       contents: `Hãy phân tích và tối ưu hóa lịch trình sau theo nhịp sinh học "${chronotype}":\nTuần bắt đầu: ${weekStart || new Date().toISOString()}\nDanh sách sự kiện:\n${JSON.stringify(events, null, 2)}`,
       config: {
         systemInstruction,
-        responseMimeType: 'application/json',
+        responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
@@ -831,14 +1041,20 @@ YÊU CẦU ĐẦU RA:
                   taskTitle: { type: Type.STRING },
                   detectedEnergyLevel: {
                     type: Type.STRING,
-                    enum: ['peak_focus', 'light_admin', 'recovery'],
+                    enum: ["peak_focus", "light_admin", "recovery"],
                   },
                   currentSlotTime: { type: Type.STRING },
                   isOptimal: { type: Type.BOOLEAN },
                   mismatchReason: { type: Type.STRING },
                   suggestedSlotTime: { type: Type.STRING },
                 },
-                required: ['eventId', 'taskTitle', 'detectedEnergyLevel', 'currentSlotTime', 'isOptimal'],
+                required: [
+                  "eventId",
+                  "taskTitle",
+                  "detectedEnergyLevel",
+                  "currentSlotTime",
+                  "isOptimal",
+                ],
               },
             },
             optimizedEvents: {
@@ -853,98 +1069,118 @@ YÊU CẦU ĐẦU RA:
                   endTime: { type: Type.STRING },
                   category: {
                     type: Type.STRING,
-                    enum: ['study', 'work', 'meeting', 'personal', 'break'],
+                    enum: ["study", "work", "meeting", "personal", "break"],
                   },
                   priority: {
                     type: Type.STRING,
-                    enum: ['high', 'medium', 'low'],
+                    enum: ["high", "medium", "low"],
                   },
                   energyLevel: {
                     type: Type.STRING,
-                    enum: ['peak_focus', 'light_admin', 'recovery'],
+                    enum: ["peak_focus", "light_admin", "recovery"],
                   },
                   reasoning: { type: Type.STRING },
                   hasMeet: { type: Type.BOOLEAN },
                 },
-                required: ['id', 'title', 'startTime', 'endTime', 'category', 'priority', 'energyLevel'],
+                required: [
+                  "id",
+                  "title",
+                  "startTime",
+                  "endTime",
+                  "category",
+                  "priority",
+                  "energyLevel",
+                ],
               },
             },
           },
           required: [
-            'chronotype',
-            'energyAlignmentScore',
-            'scoreExplanation',
-            'chronotypeAdvice',
-            'peakHoursDescription',
-            'slumpHoursDescription',
-            'recoveryHoursDescription',
-            'mismatchesCount',
-            'audits',
-            'optimizedEvents',
+            "chronotype",
+            "energyAlignmentScore",
+            "scoreExplanation",
+            "chronotypeAdvice",
+            "peakHoursDescription",
+            "slumpHoursDescription",
+            "recoveryHoursDescription",
+            "mismatchesCount",
+            "audits",
+            "optimizedEvents",
           ],
         },
       },
     });
 
-    const parsedData = JSON.parse(response.text || '{}');
+    const parsedData = JSON.parse(response.text || "{}");
     return res.json(parsedData);
   } catch (error: any) {
-    console.error('Error in AI energy matcher endpoint, utilizing intelligent fallback:', error);
+    console.error(
+      "Error in AI energy matcher endpoint, utilizing intelligent fallback:",
+      error,
+    );
     try {
-      const { events = [], chronotype = 'balanced' } = req.body;
-      const isMorning = chronotype === 'morning_bird';
-      const isNight = chronotype === 'night_owl';
+      const { events = [], chronotype = "balanced" } = req.body;
+      const isMorning = chronotype === "morning_bird";
+      const isNight = chronotype === "night_owl";
 
-      const peakWindow = isMorning ? { start: 8, end: 12 } : isNight ? { start: 17, end: 21 } : { start: 9, end: 12 };
+      const peakWindow = isMorning
+        ? { start: 8, end: 12 }
+        : isNight
+          ? { start: 17, end: 21 }
+          : { start: 9, end: 12 };
       const slumpWindow = { start: 13, end: 15 };
-      const recoveryWindow = isMorning ? { start: 17, end: 20 } : isNight ? { start: 8, end: 11 } : { start: 18, end: 21 };
+      const recoveryWindow = isMorning
+        ? { start: 17, end: 20 }
+        : isNight
+          ? { start: 8, end: 11 }
+          : { start: 18, end: 21 };
 
       let mismatchesCount = 0;
       const audits = events.map((ev: any) => {
         const startH = new Date(ev.startTime).getHours();
-        const titleLower = (ev.title || '').toLowerCase();
-        let detectedLevel: 'peak_focus' | 'light_admin' | 'recovery' = 'light_admin';
+        const titleLower = (ev.title || "").toLowerCase();
+        let detectedLevel: "peak_focus" | "light_admin" | "recovery" =
+          "light_admin";
 
         if (
-          ev.category === 'study' ||
-          ev.priority === 'high' ||
-          titleLower.includes('toán') ||
-          titleLower.includes('thi') ||
-          titleLower.includes('code') ||
-          titleLower.includes('luận') ||
-          titleLower.includes('dự án') ||
-          titleLower.includes('sprint') ||
-          titleLower.includes('chiến lược')
+          ev.category === "study" ||
+          ev.priority === "high" ||
+          titleLower.includes("toán") ||
+          titleLower.includes("thi") ||
+          titleLower.includes("code") ||
+          titleLower.includes("luận") ||
+          titleLower.includes("dự án") ||
+          titleLower.includes("sprint") ||
+          titleLower.includes("chiến lược")
         ) {
-          detectedLevel = 'peak_focus';
+          detectedLevel = "peak_focus";
         } else if (
-          ev.category === 'break' ||
-          ev.category === 'personal' ||
-          titleLower.includes('gym') ||
-          titleLower.includes('chạy') ||
-          titleLower.includes('nghỉ') ||
-          titleLower.includes('thể thao')
+          ev.category === "break" ||
+          ev.category === "personal" ||
+          titleLower.includes("gym") ||
+          titleLower.includes("chạy") ||
+          titleLower.includes("nghỉ") ||
+          titleLower.includes("thể thao")
         ) {
-          detectedLevel = 'recovery';
+          detectedLevel = "recovery";
         }
 
         let isOptimal = true;
-        let mismatchReason = '';
-        let suggestedSlotTime = '';
+        let mismatchReason = "";
+        let suggestedSlotTime = "";
 
-        if (detectedLevel === 'peak_focus') {
+        if (detectedLevel === "peak_focus") {
           if (startH < peakWindow.start || startH >= peakWindow.end) {
             isOptimal = false;
             mismatchesCount++;
             mismatchReason = `Nhiệm vụ cần tập trung sâu đang xếp ngoài giờ vàng (${peakWindow.start}:00 - ${peakWindow.end}:00)`;
-            suggestedSlotTime = `${peakWindow.start.toString().padStart(2, '0')}:00`;
+            suggestedSlotTime = `${peakWindow.start.toString().padStart(2, "0")}:00`;
           }
-        } else if (detectedLevel === 'light_admin') {
+        } else if (detectedLevel === "light_admin") {
           if (startH >= peakWindow.start && startH < peakWindow.end) {
             isOptimal = false;
             mismatchesCount++;
             mismatchReason = `Việc nhẹ nhàng đang chiếm khung giờ vàng tập trung`;
-            suggestedSlotTime = `${slumpWindow.start.toString().padStart(2, '0')}:00`;
+            suggestedSlotTime = `${slumpWindow.start.toString().padStart(2, "0")}:00`;
           }
         }
 
@@ -952,40 +1188,69 @@ YÊU CẦU ĐẦU RA:
           eventId: ev.id,
           taskTitle: ev.title,
           detectedEnergyLevel: detectedLevel,
-          currentSlotTime: `${startH.toString().padStart(2, '0')}:00`,
+          currentSlotTime: `${startH.toString().padStart(2, "0")}:00`,
           isOptimal,
           mismatchReason,
           suggestedSlotTime,
         };
       });
 
-      const energyAlignmentScore = Math.max(40, Math.min(100, Math.round(100 - (mismatchesCount / Math.max(1, events.length)) * 50)));
+      const energyAlignmentScore = Math.max(
+        40,
+        Math.min(
+          100,
+          Math.round(100 - (mismatchesCount / Math.max(1, events.length)) * 50),
+        ),
+      );
 
       let peakCursor = peakWindow.start;
       let slumpCursor = slumpWindow.start;
       let recoveryCursor = recoveryWindow.start;
+      let currentDay = "";
 
       const optimizedEvents = events.map((ev: any) => {
         const audit = audits.find((a: any) => a.eventId === ev.id);
-        const level = audit ? audit.detectedEnergyLevel : 'light_admin';
+        const level = audit ? audit.detectedEnergyLevel : "light_admin";
         const oldStart = new Date(ev.startTime);
         const oldEnd = new Date(ev.endTime);
-        const durationMs = Math.max(30 * 60 * 1000, oldEnd.getTime() - oldStart.getTime());
+        const durationMs = Math.max(
+          30 * 60 * 1000,
+          oldEnd.getTime() - oldStart.getTime(),
+        );
+
+        // Reset cursors khi sang ngày mới để tránh overlap cross-day
+        const evDay = `${oldStart.getFullYear()}-${oldStart.getMonth()}-${oldStart.getDate()}`;
+        if (evDay !== currentDay) {
+          currentDay = evDay;
+          peakCursor = peakWindow.start;
+          slumpCursor = slumpWindow.start;
+          recoveryCursor = recoveryWindow.start;
+        }
 
         let targetHour = oldStart.getHours();
-        let reasoning = 'Khung giờ phù hợp với mức năng lượng.';
+        let reasoning = "Khung giờ phù hợp với mức năng lượng.";
 
-        if (level === 'peak_focus') {
+        if (level === "peak_focus") {
           targetHour = peakCursor;
-          peakCursor = Math.min(peakWindow.end - 1, peakCursor + 1);
+          // Advance cursor by event duration in hours (min 1h)
+          const durationHours = Math.ceil(durationMs / (60 * 60 * 1000));
+          peakCursor = Math.min(peakWindow.end - 1, peakCursor + durationHours);
           reasoning = `Đã dời vào khung giờ vàng đỉnh cao (${peakWindow.start}:00 - ${peakWindow.end}:00) để tối đa năng suất.`;
-        } else if (level === 'light_admin') {
+        } else if (level === "light_admin") {
           targetHour = slumpCursor;
-          slumpCursor = Math.min(slumpWindow.end + 1, slumpCursor + 1);
+          const durationHours = Math.ceil(durationMs / (60 * 60 * 1000));
+          slumpCursor = Math.min(
+            slumpWindow.end + 1,
+            slumpCursor + durationHours,
+          );
           reasoning = `Đã dời vào khung sụt giảm sau bữa trưa (${slumpWindow.start}:00 - ${slumpWindow.end}:00) cho việc nhẹ nhàng.`;
-        } else if (level === 'recovery') {
+        } else if (level === "recovery") {
           targetHour = recoveryCursor;
-          recoveryCursor = Math.min(recoveryWindow.end, recoveryCursor + 1);
+          const durationHours = Math.ceil(durationMs / (60 * 60 * 1000));
+          recoveryCursor = Math.min(
+            recoveryWindow.end,
+            recoveryCursor + durationHours,
+          );
           reasoning = `Đã dời vào khung hồi phục (${recoveryWindow.start}:00) để tái tạo năng lượng.`;
         }
 
@@ -1012,10 +1277,10 @@ YÊU CẦU ĐẦU RA:
         energyAlignmentScore,
         scoreExplanation: `Phát hiện ${mismatchesCount} công việc chưa tối ưu theo nhịp sinh học ${chronotype}. Điểm đạt ${energyAlignmentScore}/100.`,
         chronotypeAdvice: isMorning
-          ? 'Bạn thuộc nhóm Chim Buổi Sáng: Hãy giải quyết toàn bộ bài tập khó, dự án lớn trước 11:30. Chiều sau ăn trưa chỉ check email và làm việc nhẹ.'
+          ? "Bạn thuộc nhóm Chim Buổi Sáng: Hãy giải quyết toàn bộ bài tập khó, dự án lớn trước 11:30. Chiều sau ăn trưa chỉ check email và làm việc nhẹ."
           : isNight
-          ? 'Bạn thuộc nhóm Cú Đêm: Buổi sáng chỉ khởi động nhẹ và làm việc đơn giản. Hãy dồn toàn bộ sáng tạo và công việc phức tạp vào khung từ 17:00 trở đi.'
-          : 'Bạn thuộc nhóm Nhịp Cân Bằng: Khung 9h-12h là thời điểm vàng để "Eat the Frog" (xử lý việc khó nhất). Hãy nghỉ ngơi sau bữa trưa để nạp lại năng lượng.',
+            ? "Bạn thuộc nhóm Cú Đêm: Buổi sáng chỉ khởi động nhẹ và làm việc đơn giản. Hãy dồn toàn bộ sáng tạo và công việc phức tạp vào khung từ 17:00 trở đi."
+            : 'Bạn thuộc nhóm Nhịp Cân Bằng: Khung 9h-12h là thời điểm vàng để "Eat the Frog" (xử lý việc khó nhất). Hãy nghỉ ngơi sau bữa trưa để nạp lại năng lượng.',
         peakHoursDescription: `${peakWindow.start}:00 - ${peakWindow.end}:00`,
         slumpHoursDescription: `${slumpWindow.start}:00 - ${slumpWindow.end}:30`,
         recoveryHoursDescription: `${recoveryWindow.start}:00 - ${recoveryWindow.end}:00`,
@@ -1024,16 +1289,18 @@ YÊU CẦU ĐẦU RA:
         optimizedEvents,
       });
     } catch (fallbackErr: any) {
-      return res.status(500).json({ error: error.message || 'Lỗi xếp lịch theo năng lượng sinh học' });
+      return res.status(500).json({
+        error: error.message || "Lỗi xếp lịch theo năng lượng sinh học",
+      });
     }
   }
 });
 
 // AI Route 9: AI Travel Buffer & Preparation Time Analyzer
-app.post('/api/ai/analyze-travel-buffers', async (req, res) => {
+app.post("/api/ai/analyze-travel-buffers", async (req, res) => {
   const {
     events = [],
-    defaultTransitMode = 'motorcycle',
+    defaultTransitMode = "motorcycle",
     defaultBufferMinutes = 25,
   } = req.body;
 
@@ -1050,12 +1317,11 @@ Nhiệm vụ của bạn:
 4. Tạo danh sách các khối đệm di chuyển (suggestedBuffers) với tiêu đề như "🚗 Di chuyển: [Địa điểm A] ➔ [Địa điểm B]" hoặc "🚗 Di chuyển & Chuẩn bị: [Địa điểm B]".
 5. Tạo danh sách lịch đã được tái cấu trúc (autoShiftedEvents): Chèn các khối đệm vào trước sự kiện B, nếu cần hãy dời sự kiện B lùi lại để tránh trùng giờ.`;
 
-    const response = await ai.models.generateContent({
-      model: MODEL_NAME,
+    const response = await callGeminiSafe({
       contents: `Hãy quét và phân tích thời gian di chuyển cho danh sách sự kiện sau:\nPhương tiện mặc định: ${defaultTransitMode}, Đệm tối thiểu: ${defaultBufferMinutes} phút.\nSự kiện:\n${JSON.stringify(events, null, 2)}`,
       config: {
         systemInstruction,
-        responseMimeType: 'application/json',
+        responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
@@ -1078,14 +1344,14 @@ Nhiệm vụ của bạn:
                   estimatedTrafficNote: { type: Type.STRING },
                 },
                 required: [
-                  'id',
-                  'previousTitle',
-                  'nextTitle',
-                  'originLocation',
-                  'destinationLocation',
-                  'actualGapMinutes',
-                  'recommendedBufferMinutes',
-                  'estimatedTrafficNote',
+                  "id",
+                  "previousTitle",
+                  "nextTitle",
+                  "originLocation",
+                  "destinationLocation",
+                  "actualGapMinutes",
+                  "recommendedBufferMinutes",
+                  "estimatedTrafficNote",
                 ],
               },
             },
@@ -1103,23 +1369,39 @@ Nhiệm vụ của bạn:
                   destination: { type: Type.STRING },
                   transitMode: {
                     type: Type.STRING,
-                    enum: ['motorcycle', 'car', 'transit', 'walking'],
+                    enum: ["motorcycle", "car", "transit", "walking"],
                   },
                   note: { type: Type.STRING },
                 },
-                required: ['targetEventId', 'targetTitle', 'bufferMinutes', 'startTime', 'endTime', 'destination', 'note'],
+                required: [
+                  "targetEventId",
+                  "targetTitle",
+                  "bufferMinutes",
+                  "startTime",
+                  "endTime",
+                  "destination",
+                  "note",
+                ],
               },
             },
           },
-          required: ['offlineEventsCount', 'summary', 'hazards', 'suggestedBuffers'],
+          required: [
+            "offlineEventsCount",
+            "summary",
+            "hazards",
+            "suggestedBuffers",
+          ],
         },
       },
     });
 
-    const parsedData = JSON.parse(response.text || '{}');
+    const parsedData = JSON.parse(response.text || "{}");
     return res.json(parsedData);
   } catch (error: any) {
-    console.error('Error in travel buffer endpoint, using intelligent fallback:', error);
+    console.error(
+      "Error in travel buffer endpoint, using intelligent fallback:",
+      error,
+    );
 
     // High quality rule-based fallback
     try {
@@ -1127,7 +1409,7 @@ Nhiệm vụ của bạn:
       const eventsByDay: Record<string, any[]> = {};
 
       nonBufferEvents.forEach((ev: any) => {
-        const dayStr = new Date(ev.startTime).toISOString().split('T')[0];
+        const dayStr = new Date(ev.startTime).toISOString().split("T")[0];
         if (!eventsByDay[dayStr]) eventsByDay[dayStr] = [];
         eventsByDay[dayStr].push(ev);
       });
@@ -1138,7 +1420,10 @@ Nhiệm vụ của bạn:
 
       Object.entries(eventsByDay).forEach(([dayStr, dayEvents]) => {
         // Sort chronologically
-        dayEvents.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+        dayEvents.sort(
+          (a, b) =>
+            new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+        );
 
         for (let i = 0; i < dayEvents.length; i++) {
           const current = dayEvents[i];
@@ -1149,13 +1434,18 @@ Nhiệm vụ của bạn:
             const next = dayEvents[i + 1];
             const endCurrent = new Date(current.endTime).getTime();
             const startNext = new Date(next.startTime).getTime();
-            const gapMinutes = Math.round((startNext - endCurrent) / (1000 * 60));
+            const gapMinutes = Math.round(
+              (startNext - endCurrent) / (1000 * 60),
+            );
 
-            const locA = current.location || 'Địa điểm trước';
-            const locB = next.location || 'Địa điểm sau';
+            const locA = current.location || "Địa điểm trước";
+            const locB = next.location || "Địa điểm sau";
 
             // Check if there is a travel hazard (0 min gap or < 25 mins between different offline locations)
-            if (gapMinutes < defaultBufferMinutes && (!current.hasMeet || !next.hasMeet)) {
+            if (
+              gapMinutes < defaultBufferMinutes &&
+              (!current.hasMeet || !next.hasMeet)
+            ) {
               const recommended = Math.max(defaultBufferMinutes, 25);
               const note = `Di chuyển từ "${locA}" sang "${locB}" cần khoảng ${recommended} phút đệm dự phòng kẹt xe.`;
 
@@ -1175,7 +1465,9 @@ Nhiệm vụ của bạn:
 
               // Buffer times
               const bufferEnd = new Date(next.startTime);
-              const bufferStart = new Date(bufferEnd.getTime() - recommended * 60 * 1000);
+              const bufferStart = new Date(
+                bufferEnd.getTime() - recommended * 60 * 1000,
+              );
 
               suggestedBuffers.push({
                 targetEventId: next.id,
@@ -1195,33 +1487,36 @@ Nhiệm vụ của bạn:
 
       return res.json({
         offlineEventsCount,
-        summary: hazards.length > 0
-          ? `Phát hiện ${hazards.length} khoảng chuyển tiếp di chuyển gấp rút (< ${defaultBufferMinutes} phút) cần chèn thời gian đệm.`
-          : 'Lịch trình di chuyển của bạn đã có đủ khoảng đệm an toàn giữa các địa điểm.',
+        summary:
+          hazards.length > 0
+            ? `Phát hiện ${hazards.length} khoảng chuyển tiếp di chuyển gấp rút (< ${defaultBufferMinutes} phút) cần chèn thời gian đệm.`
+            : "Lịch trình di chuyển của bạn đã có đủ khoảng đệm an toàn giữa các địa điểm.",
         hazards,
         suggestedBuffers,
       });
     } catch (fallbackErr: any) {
-      return res.status(500).json({ error: error.message || 'Lỗi phân tích thời gian di chuyển' });
+      return res
+        .status(500)
+        .json({ error: error.message || "Lỗi phân tích thời gian di chuyển" });
     }
   }
 });
 
 // Vite middleware in dev or static files in production
-if (process.env.NODE_ENV !== 'production') {
-  const { createServer: createViteServer } = await import('vite');
+if (process.env.NODE_ENV !== "production") {
+  const { createServer: createViteServer } = await import("vite");
   const vite = await createViteServer({
     server: { middlewareMode: true },
-    appType: 'spa',
+    appType: "spa",
   });
   app.use(vite.middlewares);
 } else {
-  app.use(express.static(path.resolve(__dirname, 'dist')));
-  app.get('*', (req, res) => {
-    res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+  app.use(express.static(path.resolve(__dirname, "dist")));
+  app.get("*", (req, res) => {
+    res.sendFile(path.resolve(__dirname, "dist", "index.html"));
   });
 }
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`[Smart Schedule] Server started on port ${PORT}`);
 });

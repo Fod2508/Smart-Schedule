@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from "react";
 import {
   X,
   Car,
@@ -15,14 +15,14 @@ import {
   Sliders,
   Check,
   Info,
-} from 'lucide-react';
+} from "lucide-react";
 import {
   ScheduleItem,
   TransitMode,
   TravelConflictWarning,
   TravelScanResult,
-} from '../types/schedule';
-import { analyzeTravelBuffersWithAI } from '../services/aiService';
+} from "../types/schedule";
+import { analyzeTravelBuffersWithAI } from "../services/aiService";
 
 interface TravelBufferModalProps {
   isOpen: boolean;
@@ -37,7 +37,7 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
   events,
   onApplyBuffers,
 }) => {
-  const [transitMode, setTransitMode] = useState<TransitMode>('motorcycle');
+  const [transitMode, setTransitMode] = useState<TransitMode>("motorcycle");
   const [defaultBufferMinutes, setDefaultBufferMinutes] = useState(25);
   const [autoShiftHazards, setAutoShiftHazards] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -48,28 +48,41 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
   // Existing travel buffer events currently on schedule
   const existingBuffers = events.filter((e) => e.isTravelBuffer);
 
-  useEffect(() => {
-    if (isOpen) {
-      handleScan();
-    }
-  }, [isOpen, transitMode, defaultBufferMinutes]);
-
-  if (!isOpen) return null;
-
-  const handleScan = async () => {
+  // Khai báo handleScan trước useEffect để tránh stale closure
+  const handleScan = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     setIsApplied(false);
     try {
-      const res = await analyzeTravelBuffersWithAI(events, transitMode, defaultBufferMinutes);
+      const res = await analyzeTravelBuffersWithAI(
+        events,
+        transitMode,
+        defaultBufferMinutes,
+      );
       setScanResult(res);
     } catch (err: any) {
-      console.error('Error scanning travel buffers:', err);
-      setError(err.message || 'Lỗi khi quét thời gian di chuyển');
+      console.error("Error scanning travel buffers:", err);
+      setError(err.message || "Lỗi khi quét thời gian di chuyển");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [events, transitMode, defaultBufferMinutes]);
+
+  // Scan khi mở modal lần đầu
+  useEffect(() => {
+    if (isOpen) {
+      handleScan();
+    }
+  }, [isOpen, handleScan]);
+
+  // Re-scan khi đổi settings (debounced — chỉ sau khi user dừng tay)
+  useEffect(() => {
+    if (!isOpen) return;
+    const t = setTimeout(() => handleScan(), 600);
+    return () => clearTimeout(t);
+  }, [transitMode, defaultBufferMinutes, handleScan]);
+
+  if (!isOpen) return null;
 
   const handleAutoInsertAllBuffers = () => {
     if (!scanResult || scanResult.suggestedBuffers.length === 0) return;
@@ -78,20 +91,25 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
 
     scanResult.suggestedBuffers.forEach((buf, idx) => {
       // Find target event and potential previous event
-      const targetIdx = updatedEvents.findIndex((e) => e.id === buf.targetEventId);
+      const targetIdx = updatedEvents.findIndex(
+        (e) => e.id === buf.targetEventId,
+      );
       let bufStart = new Date(buf.startTime);
       let bufEnd = new Date(buf.endTime);
 
       if (autoShiftHazards && targetIdx !== -1) {
         const targetEv = updatedEvents[targetIdx];
         const targetStart = new Date(targetEv.startTime);
-        const targetDuration = new Date(targetEv.endTime).getTime() - targetStart.getTime();
+        const targetDuration =
+          new Date(targetEv.endTime).getTime() - targetStart.getTime();
 
         // Check if there is a previous event ending right before targetStart
         const prevEv = updatedEvents.find((e) => {
           if (e.id === targetEv.id || e.isTravelBuffer) return false;
           const eEnd = new Date(e.endTime);
-          return Math.abs(targetStart.getTime() - eEnd.getTime()) <= 30 * 60 * 1000;
+          return (
+            Math.abs(targetStart.getTime() - eEnd.getTime()) <= 30 * 60 * 1000
+          );
         });
 
         if (prevEv) {
@@ -101,7 +119,9 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
           bufEnd = new Date(bufStart.getTime() + buf.bufferMinutes * 60 * 1000);
           // Shift target event to start at bufEnd
           const newTargetStart = bufEnd;
-          const newTargetEnd = new Date(newTargetStart.getTime() + targetDuration);
+          const newTargetEnd = new Date(
+            newTargetStart.getTime() + targetDuration,
+          );
 
           updatedEvents[targetIdx] = {
             ...targetEv,
@@ -116,25 +136,25 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
         id: `travel-buf-${Date.now()}-${idx}`,
         title: `🚗 Di chuyển: ${buf.origin} ➔ ${buf.destination}`,
         description: `Thời gian đệm di chuyển & chuẩn bị (${buf.bufferMinutes} phút) bằng ${
-          buf.transitMode === 'motorcycle'
-            ? 'xe máy'
-            : buf.transitMode === 'car'
-            ? 'ô tô'
-            : buf.transitMode === 'transit'
-            ? 'xe buýt'
-            : 'đi bộ'
+          buf.transitMode === "motorcycle"
+            ? "xe máy"
+            : buf.transitMode === "car"
+              ? "ô tô"
+              : buf.transitMode === "transit"
+                ? "xe buýt"
+                : "đi bộ"
         }. ${buf.note}`,
         startTime: bufStart.toISOString(),
         endTime: bufEnd.toISOString(),
-        category: 'break',
-        priority: 'high',
+        category: "break",
+        priority: "high",
         isTravelBuffer: true,
         bufferForEventId: buf.targetEventId,
         travelOrigin: buf.origin,
         travelDestination: buf.destination,
         transitMode: buf.transitMode,
         bufferMinutes: buf.bufferMinutes,
-        color: '#f59e0b',
+        color: "#f59e0b",
       };
 
       updatedEvents.push(bufferEvent);
@@ -152,20 +172,23 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
     const hazard = scanResult.hazards.find((h) => h.id === hazardId);
     if (!hazard) return;
 
-    const nextId = hazard.nextEventId || hazard.nextEvent?.id || '';
-    const nextTitle = hazard.nextTitle || hazard.nextEvent?.title || 'Sự kiện kế tiếp';
-    const prevId = hazard.previousEventId || hazard.previousEvent?.id || '';
+    const nextId = hazard.nextEventId || hazard.nextEvent?.id || "";
+    const nextTitle =
+      hazard.nextTitle || hazard.nextEvent?.title || "Sự kiện kế tiếp";
+    const prevId = hazard.previousEventId || hazard.previousEvent?.id || "";
 
-    const buf = scanResult.suggestedBuffers.find((b) => b.targetEventId === nextId) || {
+    const buf = scanResult.suggestedBuffers.find(
+      (b) => b.targetEventId === nextId,
+    ) || {
       targetEventId: nextId,
       targetTitle: nextTitle,
       bufferMinutes: hazard.recommendedBufferMinutes,
-      startTime: '',
-      endTime: '',
+      startTime: "",
+      endTime: "",
       origin: hazard.originLocation,
       destination: hazard.destinationLocation,
       transitMode,
-      note: hazard.estimatedTrafficNote || '',
+      note: hazard.estimatedTrafficNote || "",
     };
 
     let updatedEvents = [...events];
@@ -178,10 +201,14 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
     if (prevIdx !== -1 && targetIdx !== -1) {
       const prevEv = updatedEvents[prevIdx];
       const targetEv = updatedEvents[targetIdx];
-      const targetDuration = new Date(targetEv.endTime).getTime() - new Date(targetEv.startTime).getTime();
+      const targetDuration =
+        new Date(targetEv.endTime).getTime() -
+        new Date(targetEv.startTime).getTime();
 
       bufStart = new Date(prevEv.endTime);
-      bufEnd = new Date(bufStart.getTime() + hazard.recommendedBufferMinutes * 60 * 1000);
+      bufEnd = new Date(
+        bufStart.getTime() + hazard.recommendedBufferMinutes * 60 * 1000,
+      );
 
       if (autoShiftHazards) {
         updatedEvents[targetIdx] = {
@@ -192,24 +219,26 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
       }
     } else {
       bufStart = new Date();
-      bufEnd = new Date(bufStart.getTime() + hazard.recommendedBufferMinutes * 60 * 1000);
+      bufEnd = new Date(
+        bufStart.getTime() + hazard.recommendedBufferMinutes * 60 * 1000,
+      );
     }
 
     const bufferEvent: ScheduleItem = {
       id: `travel-buf-${Date.now()}`,
       title: `🚗 Di chuyển: ${hazard.originLocation} ➔ ${hazard.destinationLocation}`,
-      description: `Thời gian đệm di chuyển & chuẩn bị (${hazard.recommendedBufferMinutes} phút). ${hazard.estimatedTrafficNote || ''}`,
+      description: `Thời gian đệm di chuyển & chuẩn bị (${hazard.recommendedBufferMinutes} phút). ${hazard.estimatedTrafficNote || ""}`,
       startTime: bufStart.toISOString(),
       endTime: bufEnd.toISOString(),
-      category: 'break',
-      priority: 'high',
+      category: "break",
+      priority: "high",
       isTravelBuffer: true,
       bufferForEventId: nextId,
       travelOrigin: hazard.originLocation,
       travelDestination: hazard.destinationLocation,
       transitMode,
       bufferMinutes: hazard.recommendedBufferMinutes,
-      color: '#f59e0b',
+      color: "#f59e0b",
     };
 
     updatedEvents.push(bufferEvent);
@@ -233,15 +262,16 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-lg sm:text-xl font-bold text-zinc-900 dark:text-zinc-50">
-                  Tự động Chèn Đệm Di Chuyển & Chuẩn Bị
+                  Thêm thời gian di chuyển & chuẩn bị
                 </h2>
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
                   <Navigation className="w-3.5 h-3.5" />
-                  Travel Buffer
+                  Đệm di chuyển
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
-                Tránh đặt 2 lịch offline liền nhau mà không tính thời gian kẹt xe ngoài đường.
+                Tránh đặt 2 lịch liền nhau mà không tính thời gian di chuyển
+                giữa hai địa điểm.
               </p>
             </div>
           </div>
@@ -272,10 +302,18 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
                 </label>
                 <div className="grid grid-cols-2 gap-1.5">
                   {[
-                    { id: 'motorcycle', label: '🛵 Xe máy', desc: 'Luồn lách nhanh' },
-                    { id: 'car', label: '🚗 Ô tô / Taxi', desc: 'Dễ kẹt xe' },
-                    { id: 'transit', label: '🚌 Xe buýt', desc: 'Đợi trạm' },
-                    { id: 'walking', label: '🚶 Đi bộ', desc: 'Khoảng cách gần' },
+                    {
+                      id: "motorcycle",
+                      label: "🛵 Xe máy",
+                      desc: "Luồn lách nhanh",
+                    },
+                    { id: "car", label: "🚗 Ô tô / Taxi", desc: "Dễ kẹt xe" },
+                    { id: "transit", label: "🚌 Xe buýt", desc: "Đợi trạm" },
+                    {
+                      id: "walking",
+                      label: "🚶 Đi bộ",
+                      desc: "Khoảng cách gần",
+                    },
                   ].map((mode) => (
                     <button
                       key={mode.id}
@@ -283,12 +321,14 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
                       onClick={() => setTransitMode(mode.id as TransitMode)}
                       className={`p-2 rounded-xl border text-left transition cursor-pointer ${
                         transitMode === mode.id
-                          ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 font-bold ring-1 ring-amber-400'
-                          : 'border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
+                          ? "border-amber-500 bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 font-bold ring-1 ring-amber-400"
+                          : "border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
                       }`}
                     >
                       <div className="text-xs">{mode.label}</div>
-                      <div className="text-[10px] text-zinc-400 font-normal">{mode.desc}</div>
+                      <div className="text-[10px] text-zinc-400 font-normal">
+                        {mode.desc}
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -306,8 +346,8 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
                       onClick={() => setDefaultBufferMinutes(mins)}
                       className={`p-2 rounded-xl border text-center font-bold text-xs transition cursor-pointer ${
                         defaultBufferMinutes === mins
-                          ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 ring-1 ring-amber-400'
-                          : 'border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
+                          ? "border-amber-500 bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 ring-1 ring-amber-400"
+                          : "border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
                       }`}
                     >
                       {mins} phút
@@ -315,7 +355,9 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
                   ))}
                 </div>
                 <p className="text-[11px] text-zinc-400 mt-2">
-                  * Hệ thống sẽ tự động chèn khối thời gian {defaultBufferMinutes}p trước sự kiện offline để bạn kịp di chuyển.
+                  * Hệ thống sẽ tự động chèn khối thời gian{" "}
+                  {defaultBufferMinutes}p trước sự kiện offline để bạn kịp di
+                  chuyển.
                 </p>
               </div>
             </div>
@@ -330,8 +372,12 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
                   onChange={(e) => setAutoShiftHazards(e.target.checked)}
                   className="rounded border-zinc-300 text-amber-600 focus:ring-amber-500 cursor-pointer w-4 h-4"
                 />
-                <label htmlFor="autoShiftCheck" className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 cursor-pointer">
-                  Tự động dời lịch sự kiện kế tiếp nếu không đủ thời gian đệm (Tránh trùng giờ)
+                <label
+                  htmlFor="autoShiftCheck"
+                  className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 cursor-pointer"
+                >
+                  Tự động dời lịch sự kiện kế tiếp nếu không đủ thời gian đệm
+                  (Tránh trùng giờ)
                 </label>
               </div>
               <span className="text-[10px] text-zinc-400 hidden sm:inline">
@@ -345,7 +391,8 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
             <div className="text-center py-10 space-y-2">
               <Sparkles className="w-6 h-6 text-amber-500 animate-spin mx-auto" />
               <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
-                AI đang quét các địa điểm và tính toán khoảng cách di chuyển...
+                AI đang phân tích các địa điểm và tính toán thời gian di
+                chuyển...
               </p>
             </div>
           )}
@@ -363,8 +410,8 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
               <div
                 className={`p-4 rounded-2xl border flex items-center justify-between gap-3 text-xs ${
                   scanResult.hazards.length > 0
-                    ? 'bg-rose-50/90 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200'
-                    : 'bg-emerald-50/90 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+                    ? "bg-rose-50/90 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200"
+                    : "bg-emerald-50/90 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200"
                 }`}
               >
                 <div className="flex items-center gap-2.5">
@@ -376,10 +423,12 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
                   <div>
                     <span className="font-bold block text-sm">
                       {scanResult.hazards.length > 0
-                        ? `Phát hiện ${scanResult.hazards.length} khoảng chuyển tiếp di chuyển gấp rút!`
-                        : 'Lịch trình di chuyển an toàn'}
+                        ? `Phát hiện ${scanResult.hazards.length} cặp lịch liền nhau thiếu thời gian di chuyển`
+                        : "Lịch trình di chuyển ổn, không cần điều chỉnh"}
                     </span>
-                    <span className="text-[11px] opacity-90">{scanResult.summary}</span>
+                    <span className="text-[11px] opacity-90">
+                      {scanResult.summary}
+                    </span>
                   </div>
                 </div>
 
@@ -389,8 +438,8 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
                     disabled={isApplied}
                     className={`px-4 py-2 rounded-xl text-white font-bold text-xs shadow-md transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
                       isApplied
-                        ? 'bg-emerald-600'
-                        : 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700'
+                        ? "bg-emerald-600"
+                        : "bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700"
                     }`}
                   >
                     {isApplied ? (
@@ -401,7 +450,10 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
                     ) : (
                       <>
                         <Sparkles className="w-4 h-4" />
-                        <span>Chèn {scanResult.suggestedBuffers.length} đệm di chuyển</span>
+                        <span>
+                          Chèn {scanResult.suggestedBuffers.length} đệm di
+                          chuyển
+                        </span>
                       </>
                     )}
                   </button>
@@ -412,7 +464,7 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
               {scanResult.hazards.length > 0 && (
                 <div className="space-y-3">
                   <span className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                    Chi tiết các sự kiện offline liên tiếp cần xử lý
+                    Các cặp lịch liền nhau cần bổ sung thời gian di chuyển
                   </span>
 
                   <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
@@ -423,9 +475,17 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
                       >
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <div className="flex items-center gap-1.5 font-bold text-zinc-900 dark:text-zinc-100">
-                            <span>{hazard.previousTitle || hazard.previousEvent?.title || 'Sự kiện trước'}</span>
+                            <span>
+                              {hazard.previousTitle ||
+                                hazard.previousEvent?.title ||
+                                "Sự kiện trước"}
+                            </span>
                             <ArrowRight className="w-3.5 h-3.5 text-rose-500" />
-                            <span>{hazard.nextTitle || hazard.nextEvent?.title || 'Sự kiện sau'}</span>
+                            <span>
+                              {hazard.nextTitle ||
+                                hazard.nextEvent?.title ||
+                                "Sự kiện sau"}
+                            </span>
                           </div>
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border border-rose-300">
                             Khoảng trống: {hazard.actualGapMinutes} phút
@@ -434,11 +494,13 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
 
                         <div className="flex items-center gap-3 text-[11px] text-zinc-600 dark:text-zinc-400">
                           <span className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-zinc-400" /> Từ: <strong>{hazard.originLocation}</strong>
+                            <MapPin className="w-3 h-3 text-zinc-400" /> Từ:{" "}
+                            <strong>{hazard.originLocation}</strong>
                           </span>
                           <span>➔</span>
                           <span className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-amber-500" /> Đến: <strong>{hazard.destinationLocation}</strong>
+                            <MapPin className="w-3 h-3 text-amber-500" /> Đến:{" "}
+                            <strong>{hazard.destinationLocation}</strong>
                           </span>
                         </div>
 
@@ -449,11 +511,16 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
                         <div className="flex items-center justify-end pt-1">
                           <button
                             type="button"
-                            onClick={() => handleInsertSingleBufferForHazard(hazard.id)}
+                            onClick={() =>
+                              handleInsertSingleBufferForHazard(hazard.id)
+                            }
                             className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-semibold text-[11px] transition flex items-center gap-1 cursor-pointer shadow-2xs"
                           >
                             <Plus className="w-3 h-3" />
-                            <span>Chèn {hazard.recommendedBufferMinutes}p đệm cho cặp này</span>
+                            <span>
+                              Chèn {hazard.recommendedBufferMinutes}p đệm cho
+                              cặp này
+                            </span>
                           </button>
                         </div>
                       </div>
@@ -467,7 +534,7 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
                 <div className="space-y-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                      Các khối đệm di chuyển đang có trên lịch ({existingBuffers.length})
+                      Khoảng đệm đang có trên lịch ({existingBuffers.length})
                     </span>
                   </div>
 
@@ -475,14 +542,14 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
                     {existingBuffers.map((buf) => {
                       const start = new Date(buf.startTime);
                       const end = new Date(buf.endTime);
-                      const timeStr = `${start.toLocaleDateString('vi-VN', {
-                        weekday: 'short',
-                      })}, ${start.toLocaleTimeString('vi-VN', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })} - ${end.toLocaleTimeString('vi-VN', {
-                        hour: '2-digit',
-                        minute: '2-digit',
+                      const timeStr = `${start.toLocaleDateString("vi-VN", {
+                        weekday: "short",
+                      })}, ${start.toLocaleTimeString("vi-VN", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })} - ${end.toLocaleTimeString("vi-VN", {
+                        hour: "2-digit",
+                        minute: "2-digit",
                       })}`;
 
                       return (
@@ -496,7 +563,9 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
                               <span className="font-semibold text-zinc-900 dark:text-zinc-100 block">
                                 {buf.title}
                               </span>
-                              <span className="text-[10px] text-zinc-500">{timeStr}</span>
+                              <span className="text-[10px] text-zinc-500">
+                                {timeStr}
+                              </span>
                             </div>
                           </div>
 
@@ -535,8 +604,8 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
               disabled={isApplied}
               className={`px-5 py-2 rounded-xl font-bold text-xs text-white transition flex items-center gap-1.5 cursor-pointer shadow-md ${
                 isApplied
-                  ? 'bg-emerald-600'
-                  : 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700'
+                  ? "bg-emerald-600"
+                  : "bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700"
               }`}
             >
               {isApplied ? (
@@ -547,7 +616,10 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" />
-                  <span>Áp dụng tất cả đệm di chuyển ({scanResult.suggestedBuffers.length})</span>
+                  <span>
+                    Áp dụng tất cả đệm di chuyển (
+                    {scanResult.suggestedBuffers.length})
+                  </span>
                 </>
               )}
             </button>

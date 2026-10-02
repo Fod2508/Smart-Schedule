@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import {
   Calendar,
   Clock,
@@ -9,8 +9,8 @@ import {
   Sparkles,
   FastForward,
   Car,
-} from 'lucide-react';
-import { ScheduleItem } from '../types/schedule';
+} from "lucide-react";
+import { ScheduleItem } from "../types/schedule";
 
 interface TodayWidgetProps {
   events: ScheduleItem[];
@@ -30,18 +30,25 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
   onOpenTravelBuffer,
 }) => {
   const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
+  const localDateStr = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const todayStr = localDateStr(today);
 
   const todayEvents = events
     .filter((e) => {
       const d = new Date(e.startTime);
-      return d.toISOString().split('T')[0] === todayStr;
+      return localDateStr(d) === todayStr;
     })
-    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+    .sort(
+      (a, b) =>
+        new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+    );
 
   // Find next upcoming event
   const nowTime = today.getTime();
-  const nextEvent = todayEvents.find((e) => new Date(e.endTime).getTime() > nowTime);
+  const nextEvent = todayEvents.find(
+    (e) => new Date(e.endTime).getTime() > nowTime,
+  );
 
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-3xl p-5 shadow-sm border border-zinc-200/90 dark:border-zinc-800 transition-all flex flex-col justify-between">
@@ -52,7 +59,13 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
               <Calendar className="w-4 h-4" />
             </div>
             <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
-              Lịch trình hôm nay ({today.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' })})
+              Lịch trình hôm nay (
+              {today.toLocaleDateString("vi-VN", {
+                weekday: "short",
+                day: "2-digit",
+                month: "2-digit",
+              })}
+              )
             </h3>
           </div>
           <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
@@ -68,9 +81,9 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
                 <Sparkles className="w-3.5 h-3.5" /> Việc tiếp theo cần chú ý
               </span>
               <span>
-                {new Date(nextEvent.startTime).toLocaleTimeString('vi-VN', {
-                  hour: '2-digit',
-                  minute: '2-digit',
+                {new Date(nextEvent.startTime).toLocaleTimeString("vi-VN", {
+                  hour: "2-digit",
+                  minute: "2-digit",
                 })}
               </span>
             </div>
@@ -90,7 +103,7 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
 
               {nextEvent.hasMeet && (
                 <a
-                  href={nextEvent.meetLink || 'https://meet.google.com/new'}
+                  href={nextEvent.meetLink || "https://meet.google.com/new"}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition"
@@ -110,6 +123,7 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
 
         {/* Today's list */}
         <div className="mt-3 space-y-1.5 max-h-52 overflow-y-auto pr-1">
+          {" "}
           {todayEvents.map((ev) => {
             const start = new Date(ev.startTime);
             const end = new Date(ev.endTime);
@@ -132,7 +146,10 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
                   <div className="flex items-center gap-1 shrink-0 text-[10px] text-amber-800 dark:text-amber-300 font-medium">
                     <Clock className="w-3 h-3" />
                     <span>
-                      {start.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                      {start.toLocaleTimeString("vi-VN", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </span>
                     <span className="px-1 py-0.2 bg-amber-200/90 dark:bg-amber-800/80 rounded text-[9px] font-bold">
                       {ev.bufferMinutes || 25}p
@@ -148,8 +165,8 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
                 onClick={() => onSelectEvent(ev)}
                 className={`p-2 rounded-xl border text-xs flex items-center justify-between gap-2 transition hover:bg-zinc-50 dark:hover:bg-zinc-800/60 cursor-pointer ${
                   ev.isCompleted
-                    ? 'border-zinc-200 dark:border-zinc-800 opacity-60'
-                    : 'border-zinc-200/80 dark:border-zinc-800'
+                    ? "border-zinc-200 dark:border-zinc-800 opacity-60"
+                    : "border-zinc-200/80 dark:border-zinc-800"
                 }`}
               >
                 <div className="flex items-center gap-2 min-w-0">
@@ -160,8 +177,8 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
                     }}
                     className={`shrink-0 transition ${
                       ev.isCompleted
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-zinc-400 hover:text-zinc-600'
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-zinc-400 hover:text-zinc-600"
                     }`}
                   >
                     <CheckCircle className="w-4 h-4" />
@@ -169,8 +186,8 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
                   <span
                     className={`font-medium truncate ${
                       ev.isCompleted
-                        ? 'line-through text-zinc-400'
-                        : 'text-zinc-800 dark:text-zinc-200'
+                        ? "line-through text-zinc-400"
+                        : "text-zinc-800 dark:text-zinc-200"
                     }`}
                   >
                     {ev.title}
@@ -180,38 +197,16 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
                 <div className="flex items-center gap-1.5 shrink-0 text-[10px] text-zinc-400 font-medium">
                   <Clock className="w-3 h-3" />
                   <span>
-                    {start.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                    {start.toLocaleTimeString("vi-VN", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </span>
                   {ev.hasMeet && <Video className="w-3 h-3 text-emerald-500" />}
                 </div>
               </div>
             );
           })}
-        </div>
-
-        {/* Quick Action Triggers */}
-        <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-2">
-          {onOpenTravelBuffer && (
-            <button
-              type="button"
-              onClick={onOpenTravelBuffer}
-              className="w-full py-2 px-3 rounded-xl bg-orange-50 hover:bg-orange-100 dark:bg-orange-950/50 dark:hover:bg-orange-900/50 text-orange-700 dark:text-orange-300 border border-orange-200/80 dark:border-orange-800/80 text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-2xs"
-            >
-              <Car className="w-3.5 h-3.5 text-orange-600" />
-              <span>Đệm di chuyển & chuẩn bị (Travel Buffer)</span>
-            </button>
-          )}
-
-          {onOpenReschedule && todayEvents.length > 0 && (
-            <button
-              type="button"
-              onClick={() => onOpenReschedule(nextEvent?.id)}
-              className="w-full py-2 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/80 text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-2xs"
-            >
-              <FastForward className="w-3.5 h-3.5 text-amber-600" />
-              <span>Bị trễ việc? AI Dời Lịch Tự Động</span>
-            </button>
-          )}
         </div>
       </div>
     </div>

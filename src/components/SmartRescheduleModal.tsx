@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   X,
   FastForward,
@@ -15,13 +15,13 @@ import {
   Sun,
   Flame,
   CheckCircle2,
-} from 'lucide-react';
-import { ScheduleItem } from '../types/schedule';
+} from "lucide-react";
+import { ScheduleItem } from "../types/schedule";
 import {
   smartRescheduleWithAI,
   SmartRescheduleResult,
   RescheduleChange,
-} from '../services/aiService';
+} from "../services/aiService";
 
 interface SmartRescheduleModalProps {
   isOpen: boolean;
@@ -29,7 +29,10 @@ interface SmartRescheduleModalProps {
   currentEvents: ScheduleItem[];
   preselectedEventId?: string | null;
   targetDate: string;
-  onApplyRescheduledEvents: (updatedEvents: ScheduleItem[], impactSummary: string) => void;
+  onApplyRescheduledEvents: (
+    updatedEvents: ScheduleItem[],
+    impactSummary: string,
+  ) => void;
 }
 
 export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
@@ -40,10 +43,16 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
   targetDate,
   onApplyRescheduledEvents,
 }) => {
-  const [selectedEventId, setSelectedEventId] = useState<string>(preselectedEventId || '');
+  const [selectedEventId, setSelectedEventId] = useState<string>(
+    preselectedEventId || "",
+  );
   const [delayMinutes, setDelayMinutes] = useState<number>(45);
-  const [reason, setReason] = useState<string>('Nội dung công việc kéo dài hơn dự kiến');
-  const [strategy, setStrategy] = useState<'prioritize' | 'push_all' | 'overflow_tomorrow'>('prioritize');
+  const [reason, setReason] = useState<string>(
+    "Nội dung công việc kéo dài hơn dự kiến",
+  );
+  const [strategy, setStrategy] = useState<
+    "prioritize" | "push_all" | "overflow_tomorrow"
+  >("prioritize");
 
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<SmartRescheduleResult | null>(null);
@@ -61,10 +70,10 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
 
   const quickMinutes = [15, 30, 45, 60, 90, 120];
   const quickReasons = [
-    'Nội dung công việc kéo dài hơn dự kiến',
-    'Cuộc họp thảo luận thêm thời gian',
-    'Kẹt xe / Di chuyển đến muộn',
-    'Phát sinh việc đột xuất khẩn cấp',
+    "Nội dung công việc kéo dài hơn dự kiến",
+    "Cuộc họp thảo luận thêm thời gian",
+    "Kẹt xe / Di chuyển đến muộn",
+    "Phát sinh việc đột xuất khẩn cấp",
   ];
 
   const handleRunAI = async () => {
@@ -77,12 +86,12 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
         reason.trim(),
         strategy,
         currentEvents,
-        targetDate
+        targetDate,
       );
       setResult(res);
     } catch (err: any) {
-      console.error('Smart reschedule error:', err);
-      setErrorMsg(err.message || 'Lỗi khi AI thực hiện dời lịch');
+      console.error("Smart reschedule error:", err);
+      setErrorMsg(err.message || "Lỗi khi AI thực hiện dời lịch");
     } finally {
       setIsLoading(false);
     }
@@ -94,27 +103,27 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
     onClose();
   };
 
-  const getActionBadge = (action: RescheduleChange['action']) => {
+  const getActionBadge = (action: RescheduleChange["action"]) => {
     switch (action) {
-      case 'delayed':
+      case "delayed":
         return (
           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
             Kéo dài +{delayMinutes}p
           </span>
         );
-      case 'shifted':
+      case "shifted":
         return (
           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
             Dời lùi giờ
           </span>
         );
-      case 'shortened':
+      case "shortened":
         return (
           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300">
             Rút ngắn thời lượng
           </span>
         );
-      case 'moved_to_tomorrow':
+      case "moved_to_tomorrow":
         return (
           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300">
             Chuyển sang ngày mai
@@ -141,15 +150,16 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
-                  AI Dời Lịch Thông Minh Khi Bị Trễ Việc
+                  Xử lý trễ việc & sắp xếp lại lịch
                 </h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200/60 flex items-center gap-1">
                   <Sparkles className="w-3 h-3 text-amber-500" />
-                  Auto-Reschedule
+                  AI tự động
                 </span>
               </div>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                Tự động hóa giải quyết hiệu ứng Domino: bảo vệ cuộc họp quan trọng, dời các việc kế tiếp không bị chồng chéo
+                Khi một việc bị kéo dài, AI tự sắp xếp lại các việc còn lại —
+                bảo vệ cuộc họp quan trọng, tránh chồng chéo lịch.
               </p>
             </div>
           </div>
@@ -181,16 +191,24 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
                 onChange={(e) => setSelectedEventId(e.target.value)}
                 className="w-full px-3.5 py-2 text-xs rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-medium"
               >
-                <option value="">-- Trễ từ mốc thời gian hiện tại (không gắn sự kiện cụ thể) --</option>
+                <option value="">
+                  -- Trễ từ mốc thời gian hiện tại (không gắn sự kiện cụ thể) --
+                </option>
                 {currentEvents.map((ev) => {
-                  const sTime = new Date(ev.startTime).toLocaleTimeString('vi-VN', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  });
-                  const eTime = new Date(ev.endTime).toLocaleTimeString('vi-VN', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  });
+                  const sTime = new Date(ev.startTime).toLocaleTimeString(
+                    "vi-VN",
+                    {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    },
+                  );
+                  const eTime = new Date(ev.endTime).toLocaleTimeString(
+                    "vi-VN",
+                    {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    },
+                  );
                   return (
                     <option key={ev.id} value={ev.id}>
                       {ev.title} ({sTime} - {eTime})
@@ -204,7 +222,10 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                  Thời gian bị trễ / kéo dài thêm: <span className="text-amber-600 font-bold">{delayMinutes} phút</span>
+                  Thời gian bị trễ / kéo dài thêm:{" "}
+                  <span className="text-amber-600 font-bold">
+                    {delayMinutes} phút
+                  </span>
                 </label>
               </div>
               <div className="flex flex-wrap gap-1.5 items-center">
@@ -215,8 +236,8 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
                     onClick={() => setDelayMinutes(mins)}
                     className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
                       delayMinutes === mins
-                        ? 'bg-amber-600 text-white shadow-2xs'
-                        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                        ? "bg-amber-600 text-white shadow-2xs"
+                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
                     }`}
                   >
                     +{mins}p
@@ -271,11 +292,11 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <button
                   type="button"
-                  onClick={() => setStrategy('prioritize')}
+                  onClick={() => setStrategy("prioritize")}
                   className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
-                    strategy === 'prioritize'
-                      ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 ring-2 ring-amber-500/20'
-                      : 'bg-zinc-50 dark:bg-zinc-800/50 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                    strategy === "prioritize"
+                      ? "bg-amber-50/80 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 ring-2 ring-amber-500/20"
+                      : "bg-zinc-50 dark:bg-zinc-800/50 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                   }`}
                 >
                   <div className="flex items-center gap-1.5 font-bold text-xs text-amber-900 dark:text-amber-200">
@@ -283,17 +304,18 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
                     <span>Ưu tiên thông minh</span>
                   </div>
                   <p className="text-[11px] text-zinc-500 mt-1 leading-snug">
-                    Bảo vệ cuộc họp cố định & deadline. Dời các việc linh hoạt vào khoảng trống hoặc dồn cuối ngày.
+                    Giữ nguyên cuộc họp & deadline quan trọng. Dời các việc linh
+                    hoạt vào khoảng trống hoặc cuối ngày.
                   </p>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => setStrategy('push_all')}
+                  onClick={() => setStrategy("push_all")}
                   className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
-                    strategy === 'push_all'
-                      ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 ring-2 ring-amber-500/20'
-                      : 'bg-zinc-50 dark:bg-zinc-800/50 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                    strategy === "push_all"
+                      ? "bg-amber-50/80 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 ring-2 ring-amber-500/20"
+                      : "bg-zinc-50 dark:bg-zinc-800/50 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                   }`}
                 >
                   <div className="flex items-center gap-1.5 font-bold text-xs text-amber-900 dark:text-amber-200">
@@ -301,17 +323,18 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
                     <span>Đẩy lùi nối tiếp</span>
                   </div>
                   <p className="text-[11px] text-zinc-500 mt-1 leading-snug">
-                    Tịnh tiến toàn bộ các việc kế tiếp lùi đúng {delayMinutes} phút, giữ nguyên thời lượng từng việc.
+                    Dời lùi tất cả các việc tiếp theo đúng {delayMinutes} phút,
+                    giữ nguyên thời lượng từng việc.
                   </p>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => setStrategy('overflow_tomorrow')}
+                  onClick={() => setStrategy("overflow_tomorrow")}
                   className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
-                    strategy === 'overflow_tomorrow'
-                      ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 ring-2 ring-amber-500/20'
-                      : 'bg-zinc-50 dark:bg-zinc-800/50 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                    strategy === "overflow_tomorrow"
+                      ? "bg-amber-50/80 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 ring-2 ring-amber-500/20"
+                      : "bg-zinc-50 dark:bg-zinc-800/50 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                   }`}
                 >
                   <div className="flex items-center gap-1.5 font-bold text-xs text-amber-900 dark:text-amber-200">
@@ -319,7 +342,8 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
                     <span>Dời sang ngày mai</span>
                   </div>
                   <p className="text-[11px] text-zinc-500 mt-1 leading-snug">
-                    Giữ việc quan trọng trong ngày, dời việc chưa gấp sang sáng mai để kết thúc ngày đúng giờ.
+                    Giữ việc quan trọng trong ngày, dời việc chưa gấp sang sáng
+                    mai để kết thúc ngày đúng giờ.
                   </p>
                 </button>
               </div>
@@ -336,12 +360,16 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
                 {isLoading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Gemini AI đang tái lập trình lịch...</span>
+                    <span>Gemini AI đang sắp xếp lại lịch...</span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    <span>{result ? 'Tái phân tích với thông số mới' : 'Gemini AI Phân Tích & Dời Lịch'}</span>
+                    <span>
+                      {result
+                        ? "Phân tích lại với thông số mới"
+                        : "Phân tích & sắp xếp lại lịch"}
+                    </span>
                   </>
                 )}
               </button>
@@ -371,7 +399,8 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300">
-                    Chi tiết các thay đổi trên lịch trình ({result.changes.length} sự kiện):
+                    Chi tiết các thay đổi trên lịch trình (
+                    {result.changes.length} sự kiện):
                   </span>
                 </div>
 
@@ -410,7 +439,8 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
               {/* Confirm Bottom Bar */}
               <div className="pt-2 flex items-center justify-between gap-3 border-t border-zinc-100 dark:border-zinc-800">
                 <span className="text-xs text-zinc-500">
-                  Sẽ cập nhật vào thời khóa biểu và đồng bộ Google Calendar nếu có
+                  Sẽ cập nhật vào thời khóa biểu và đồng bộ Google Calendar nếu
+                  có
                 </span>
 
                 <button

@@ -1,14 +1,14 @@
-export type EventCategory = 'study' | 'work' | 'meeting' | 'personal' | 'break';
-export type PriorityLevel = 'high' | 'medium' | 'low';
-export type UserPersona = 'student' | 'teacher' | 'freelancer' | 'team';
-export type Chronotype = 'morning_bird' | 'night_owl' | 'balanced';
+export type EventCategory = "study" | "work" | "meeting" | "personal" | "break";
+export type PriorityLevel = "high" | "medium" | "low";
+export type UserPersona = "student" | "teacher" | "freelancer" | "team";
+export type Chronotype = "morning_bird" | "night_owl" | "balanced";
 
 export interface ScheduleItem {
   id: string;
   title: string;
   description?: string;
   startTime: string; // ISO string
-  endTime: string;   // ISO string
+  endTime: string; // ISO string
   category: EventCategory;
   priority: PriorityLevel;
   hasMeet?: boolean;
@@ -20,8 +20,8 @@ export interface ScheduleItem {
   pomodoroBlocks?: number;
   completedPomodoros?: number;
   color?: string;
-  recurrence?: 'none' | 'daily' | 'weekly' | 'monthly';
-  source?: 'local' | 'google_calendar' | 'google_tasks' | 'sheets' | 'ai';
+  recurrence?: "none" | "daily" | "weekly" | "monthly";
+  source?: "local" | "google_calendar" | "google_tasks" | "sheets" | "ai";
   location?: string;
   energyLevel?: TaskEnergyLevel;
   isTravelBuffer?: boolean;
@@ -30,9 +30,10 @@ export interface ScheduleItem {
   travelDestination?: string;
   transitMode?: TransitMode;
   bufferMinutes?: number;
+  reminderMinutes?: number;
 }
 
-export type TransitMode = 'motorcycle' | 'car' | 'transit' | 'walking';
+export type TransitMode = "motorcycle" | "car" | "transit" | "walking";
 
 export interface TravelConflictWarning {
   id: string;
@@ -66,7 +67,7 @@ export interface TravelScanResult {
   }>;
 }
 
-export type TaskEnergyLevel = 'peak_focus' | 'light_admin' | 'recovery';
+export type TaskEnergyLevel = "peak_focus" | "light_admin" | "recovery";
 
 export interface EnergyAuditItem {
   eventId: string;
@@ -117,7 +118,7 @@ export interface GoogleTaskItem {
   title: string;
   notes?: string;
   due?: string; // ISO format
-  status: 'needsAction' | 'completed';
+  status: "needsAction" | "completed";
   listId: string;
   listTitle: string;
   scheduledEventId?: string;
@@ -148,7 +149,7 @@ export interface ConflictResolutionOption {
   description: string;
   pros: string;
   cons: string;
-  actionType: 'shift_event_a' | 'shift_event_b' | 'shorten' | 'split';
+  actionType: "shift_event_a" | "shift_event_b" | "shorten" | "split";
   suggestedStartTime?: string;
   suggestedEndTime?: string;
   targetEventId?: string;
@@ -160,5 +161,5 @@ export interface TemplateData {
   persona: UserPersona;
   description: string;
   icon: string;
-  items: Omit<ScheduleItem, 'id'>[];
+  items: Omit<ScheduleItem, "id">[];
 }
