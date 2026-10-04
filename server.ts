@@ -1517,6 +1517,15 @@ if (process.env.NODE_ENV !== "production") {
   });
 }
 
+// Health check endpoint — dùng cho cron job ping để giữ server khỏi sleep
+app.get("/health", (_req, res) => {
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`[Smart Schedule] Server started on port ${PORT}`);
 });
