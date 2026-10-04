@@ -103,16 +103,18 @@ export default function App() {
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [viewMode, setViewMode] = useState<"week" | "day" | "agenda">("week");
 
-  // Schedule Events
+  // Schedule Events — bắt đầu trống, không có dữ liệu mẫu
   const [events, setEvents] = useState<ScheduleItem[]>(() => {
     const saved = loadLocalSchedule();
-    if (saved && saved.length > 0) return saved;
-    // Default initial template (Student Exam Week)
-    const initialTpl = TEMPLATE_LIBRARY[0];
-    return initialTpl.items.map((it, idx) => ({
-      ...it,
-      id: `init-${idx}`,
-    }));
+    // Chỉ dùng data local nếu có và không phải dữ liệu mẫu init-
+    if (
+      saved &&
+      saved.length > 0 &&
+      saved.some((e) => !e.id.startsWith("init-"))
+    ) {
+      return saved;
+    }
+    return [];
   });
 
   // Google Calendar state
