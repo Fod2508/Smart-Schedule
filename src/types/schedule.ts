@@ -2,6 +2,7 @@ export type EventCategory = "study" | "work" | "meeting" | "personal" | "break";
 export type PriorityLevel = "high" | "medium" | "low";
 export type UserPersona = "student" | "teacher" | "freelancer" | "team";
 export type Chronotype = "morning_bird" | "night_owl" | "balanced";
+export type UiTheme = "cute" | "capybara" | "yohan" | "minimal";
 
 export interface ScheduleItem {
   id: string;

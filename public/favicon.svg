@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4F46E5"/>
+      <stop offset="50%" stop-color="#7C3AED"/>
+      <stop offset="100%" stop-color="#EC4899"/>
+    </linearGradient>
+
+    <!-- Glass Sheen Gradient -->
+    <linearGradient id="sheenGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Star Glow -->
+    <linearGradient id="starGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE047"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+
+    <!-- Drop Shadow Filter -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#4338CA" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Squircle Base with Shadow -->
+  <rect x="12" y="12" width="104" height="104" rx="28" fill="url(#bgGrad)" filter="url(#shadow)"/>
+
+  <!-- Inner Top Sheen -->
+  <path d="M12 40 C12 24.536 24.536 12 40 12 L88 12 C103.464 12 116 24.536 116 40 L116 54 C80 62 48 50 12 54 Z" fill="url(#sheenGrad)"/>
+
+  <!-- Border Highlight -->
+  <rect x="13" y="13" width="102" height="102" rx="27" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-opacity="0.3"/>
+
+  <!-- Calendar Page Base -->
+  <g transform="translate(24, 26)">
+    <!-- Calendar Body White Card -->
+    <rect x="4" y="10" width="72" height="66" rx="14" fill="#FFFFFF" fill-opacity="0.95"/>
+    
+    <!-- Calendar Header Bar -->
+    <path d="M4 24 C4 16.268 10.268 10 18 10 L62 10 C69.732 10 76 16.268 76 24 L76 28 L4 28 Z" fill="#6366F1"/>
+
+    <!-- Binder Rings / Pins -->
+    <rect x="20" y="4" width="6" height="12" rx="3" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.5"/>
+    <rect x="54" y="4" width="6" height="12" rx="3" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.5"/>
+
+    <!-- Calendar Grid Cells -->
+    <!-- Row 1 -->
+    <rect x="14" y="36" width="11" height="9" rx="3" fill="#818CF8" fill-opacity="0.3"/>
+    <rect x="34" y="36" width="11" height="9" rx="3" fill="#818CF8" fill-opacity="0.3"/>
+    <rect x="54" y="36" width="11" height="9" rx="3" fill="#818CF8" fill-opacity="0.3"/>
+
+    <!-- Row 2 -->
+    <rect x="14" y="50" width="11" height="9" rx="3" fill="#818CF8" fill-opacity="0.3"/>
+    <rect x="34" y="50" width="11" height="9" rx="3" fill="#EC4899" fill-opacity="0.9"/>
+    <rect x="54" y="50" width="11" height="9" rx="3" fill="#818CF8" fill-opacity="0.3"/>
+
+    <!-- Row 3 -->
+    <rect x="14" y="64" width="11" height="9" rx="3" fill="#818CF8" fill-opacity="0.3"/>
+    <rect x="34" y="64" width="11" height="9" rx="3" fill="#818CF8" fill-opacity="0.3"/>
+    <rect x="54" y="64" width="11" height="9" rx="3" fill="#10B981" fill-opacity="0.9"/>
+  </g>
+
+  <!-- AI Sparkle Star (Top-Right of Calendar) -->
+  <g transform="translate(86, 20)">
+    <!-- Glow filter -->
+    <circle cx="12" cy="12" r="14" fill="#FBBF24" fill-opacity="0.25"/>
+    <!-- 4-point sparkle star -->
+    <path d="M12 0 C12 7.5 16.5 12 24 12 C16.5 12 12 16.5 12 24 C12 16.5 7.5 12 0 12 C7.5 12 12 7.5 12 0 Z" fill="url(#starGrad)"/>
+    <circle cx="12" cy="12" r="2.5" fill="#FFFFFF"/>
+  </g>
+</svg>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertTriangle, X } from 'lucide-react';
+import { UiTheme } from '../types/schedule';
 
 interface ConfirmationModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface ConfirmationModalProps {
   itemDetails?: string[];
   onConfirm: () => void;
   onCancel: () => void;
+  uiTheme?: UiTheme;
 }
 
 export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
@@ -25,22 +27,33 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   itemDetails,
   onConfirm,
   onCancel,
+  uiTheme = 'cute',
 }) => {
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div
-        className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden transform transition-all"
+        className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden transform transition-all"
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirmation-modal-title"
       >
         <div className="p-6">
           <div className="flex items-start justify-between gap-3">
-            <div className={`p-3 rounded-xl shrink-0 ${isDestructive ? 'bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400' : 'bg-indigo-100 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400'}`}>
-              <AlertTriangle className="w-6 h-6" />
-            </div>
+            {uiTheme === 'yohan' && isDestructive ? (
+              <div className="w-16 h-18 shrink-0 animate-mascot-wiggle">
+                <img
+                  src="/illustrations/yohan/yohan_no.png"
+                  alt="Go Yohan No"
+                  className="w-full h-full object-contain filter drop-shadow"
+                />
+              </div>
+            ) : (
+              <div className={`p-3 rounded-xl shrink-0 ${isDestructive ? 'bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400' : 'bg-indigo-100 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400'}`}>
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+            )}
             <div className="flex-1">
               <h3 id="confirmation-modal-title" className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
                 {title}

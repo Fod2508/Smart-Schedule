@@ -22,6 +22,7 @@ import {
   TemplateData,
   UserPersona,
   Chronotype,
+  UiTheme,
 } from "./types/schedule";
 import {
   listGoogleCalendars,
@@ -71,6 +72,7 @@ import { TeamMeetingModal } from "./components/TeamMeetingModal";
 import { SmartRescheduleModal } from "./components/SmartRescheduleModal";
 import { EnergyMatcherModal } from "./components/EnergyMatcherModal";
 import { TravelBufferModal } from "./components/TravelBufferModal";
+import { CommandPalette } from "./components/CommandPalette";
 
 export default function App() {
   // Auth state
@@ -86,13 +88,40 @@ export default function App() {
   // Network state
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // Theme state
+  // Theme state with localStorage persistence
   const [isDarkMode, setIsDarkMode] = useState(() => {
-    return (
-      window.matchMedia &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches
-    );
+    try {
+      const saved = localStorage.getItem("theme");
+      if (saved === "dark") return true;
+      if (saved === "light") return false;
+      return (
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches
+      );
+    } catch {
+      return false;
+    }
   });
+
+  // UI Theme state ("cute" vs "minimal") with localStorage persistence
+  const [uiTheme, setUiTheme] = useState<UiTheme>(() => {
+    try {
+      const saved = localStorage.getItem("smart_schedule_ui_theme");
+      if (saved === "cute" || saved === "capybara" || saved === "yohan" || saved === "minimal") return saved;
+      return "cute";
+    } catch {
+      return "cute";
+    }
+  });
+
+  const handleToggleUiTheme = (newTheme: UiTheme) => {
+    setUiTheme(newTheme);
+    try {
+      localStorage.setItem("smart_schedule_ui_theme", newTheme);
+    } catch (e) {
+      console.error("Failed to save ui theme:", e);
+    }
+  };
 
   // User Profile
   const [userProfile, setUserProfile] = useState<UserProfile>(() =>
@@ -174,6 +203,20 @@ export default function App() {
     setUserProfile(updated);
     saveUserProfile(updated);
   };
+
+  // Command Palette (Ctrl+K) state
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   // Confirmation Modal state (Mandatory for Workspace operations)
   const [confirmConfig, setConfirmConfig] = useState<{
@@ -327,12 +370,20 @@ export default function App() {
     }
   }, [userProfile, user?.uid]);
 
-  // Dark mode effect
+  // Dark mode effect & persistence
   useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
+    try {
+      if (isDarkMode) {
+        document.documentElement.classList.add("dark");
+        document.documentElement.style.colorScheme = "dark";
+        localStorage.setItem("theme", "dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+        document.documentElement.style.colorScheme = "light";
+        localStorage.setItem("theme", "light");
+      }
+    } catch (e) {
+      console.warn("Theme save failed:", e);
     }
   }, [isDarkMode]);
 
@@ -651,6 +702,88 @@ export default function App() {
     setSelectedEvent(null);
   };
 
+  // Nạp lịch mẫu đầy đủ danh mục để trải nghiệm huy hiệu 3D
+  const handleLoadSampleSchedule = () => {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, "0");
+    const d = String(today.getDate()).padStart(2, "0");
+    const baseDate = `${y}-${m}-${d}`;
+
+    const samples: ScheduleItem[] = [
+      {
+        id: `sample-study-${Date.now()}`,
+        title: "Toán Giải Tích 2 & Ôn tập thi",
+        startTime: `${baseDate}T08:30:00`,
+        endTime: `${baseDate}T10:00:00`,
+        category: "study",
+        priority: "high",
+        energyLevel: "peak_focus",
+        location: "Thư viện Đại Học",
+        description: "Học chương 4 Giải tích và làm bài tập mẫu",
+      },
+      {
+        id: `sample-break-${Date.now()}`,
+        title: "Uống trà sữa & Thư giãn nghe nhạc",
+        startTime: `${baseDate}T10:15:00`,
+        endTime: `${baseDate}T11:00:00`,
+        category: "break",
+        priority: "low",
+        energyLevel: "recovery",
+        description: "Thư giãn nạp năng lượng sau ca học căng thẳng",
+      },
+      {
+        id: `sample-work-${Date.now()}`,
+        title: "Lập trình React & Thiết kế UI 3D",
+        startTime: `${baseDate}T13:30:00`,
+        endTime: `${baseDate}T15:30:00`,
+        category: "work",
+        priority: "high",
+        energyLevel: "peak_focus",
+        location: "Phòng nghiên cứu Lab",
+        description: "Hoàn thiện animation và các khối nút 3D",
+      },
+      {
+        id: `sample-travel-${Date.now()}`,
+        title: "Di chuyển đến quán cà phê họp nhóm",
+        startTime: `${baseDate}T15:30:00`,
+        endTime: `${baseDate}T16:00:00`,
+        category: "break",
+        priority: "medium",
+        isTravelBuffer: true,
+        bufferMinutes: 30,
+        transitMode: "motorcycle",
+        location: "The Coffee House",
+        description: "Thời gian di chuyển đệm tránh kẹt xe",
+      },
+      {
+        id: `sample-meeting-${Date.now()}`,
+        title: "Họp Sprint Review & Kế hoạch tuần",
+        startTime: `${baseDate}T16:00:00`,
+        endTime: `${baseDate}T17:15:00`,
+        category: "meeting",
+        priority: "medium",
+        energyLevel: "light_admin",
+        hasMeet: true,
+        location: "Google Meet",
+        description: "Báo cáo tiến độ và demo sản phẩm",
+      },
+      {
+        id: `sample-personal-${Date.now()}`,
+        title: "Đọc sách & Lên kế hoạch cá nhân",
+        startTime: `${baseDate}T19:30:00`,
+        endTime: `${baseDate}T21:00:00`,
+        category: "personal",
+        priority: "low",
+        energyLevel: "recovery",
+        description: "Đọc 30 trang sách Atomic Habits và ghi chú",
+      },
+    ];
+
+    setEvents(samples);
+    saveLocalSchedule(samples);
+  };
+
   const handleDeleteEvent = (eventId: string) => {
     const ev = events.find((e) => e.id === eventId);
     if (!ev) return;
@@ -689,6 +822,41 @@ export default function App() {
       },
     });
   };
+
+  // Drag & Drop / Resize time updater
+  const handleUpdateEventTimes = useCallback(
+    async (eventId: string, newStartTime: string, newEndTime: string) => {
+      const targetEvent = events.find((e) => e.id === eventId);
+      if (!targetEvent) return;
+
+      const updatedEvent: ScheduleItem = {
+        ...targetEvent,
+        startTime: newStartTime,
+        endTime: newEndTime,
+      };
+
+      setEvents((prev) => {
+        const next = prev.map((e) => (e.id === eventId ? updatedEvent : e));
+        saveLocalSchedule(next);
+        return next;
+      });
+
+      // Sync to Google Calendar if already synced
+      if (accessToken && targetEvent.googleEventId) {
+        try {
+          await updateGoogleCalendarEvent(
+            accessToken,
+            selectedCalendarId,
+            targetEvent.googleEventId,
+            updatedEvent,
+          );
+        } catch (err) {
+          console.error("Failed to update moved event on Google Calendar:", err);
+        }
+      }
+    },
+    [events, accessToken, selectedCalendarId],
+  );
 
   const handleToggleComplete = (eventId: string) => {
     setEvents((prev) =>
@@ -875,7 +1043,54 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-100 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white transition-colors duration-200">
+    <div className={`min-h-screen relative overflow-x-hidden ${
+      uiTheme === "yohan"
+        ? "bg-[#FAF9F6] dark:bg-[#121214] text-zinc-900 dark:text-zinc-100"
+        : uiTheme === "capybara"
+          ? "bg-[#FFF9F2] dark:bg-[#1A1410] text-[#3D2619] dark:text-[#F7EFE8]"
+          : "bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100"
+    } flex flex-col font-sans selection:bg-amber-500 selection:text-white transition-colors duration-200`}>
+      {/* Cute Floating Bubbles & Sparkles Background */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0 select-none">
+        {/* Soft Pastel Marshmallow Blobs */}
+        <div className="absolute -top-24 -left-24 w-[32rem] h-[32rem] rounded-full bg-gradient-to-tr from-pink-400/20 via-purple-300/15 to-indigo-300/10 blur-[100px] animate-aurora-1 dark:from-purple-900/30 dark:to-pink-900/20" />
+        <div className="absolute top-1/3 -right-24 w-[28rem] h-[28rem] rounded-full bg-gradient-to-bl from-amber-300/15 via-rose-300/15 to-pink-400/10 blur-[100px] animate-aurora-2 dark:from-fuchsia-950/40 dark:to-rose-950/30" />
+        <div className="absolute -bottom-24 left-1/4 w-[32rem] h-[32rem] rounded-full bg-gradient-to-tr from-teal-300/15 via-sky-300/15 to-emerald-300/10 blur-[100px] animate-aurora-3 dark:from-teal-950/40 dark:to-indigo-950/30" />
+
+        {/* Cute Floating Whimsical Decors (Soft Clouds & Twinkle Stars) */}
+        {uiTheme === "cute" && (
+          <>
+            <span className="absolute top-20 left-[8%] text-pink-400/30 dark:text-pink-400/20 text-xl font-bold animate-star-twinkle" style={{ animationDelay: "0.2s" }}>✦</span>
+            <span className="absolute top-44 right-[12%] text-amber-400/30 dark:text-amber-400/20 text-lg font-bold animate-float-bob" style={{ animationDelay: "1s" }}>✨</span>
+            <span className="absolute top-[60%] left-[5%] text-indigo-400/25 dark:text-indigo-400/20 text-2xl font-bold animate-float-bob-slow" style={{ animationDelay: "2s" }}>☁️</span>
+            <span className="absolute top-[75%] right-[8%] text-purple-400/30 dark:text-purple-400/20 text-lg font-bold animate-star-twinkle" style={{ animationDelay: "1.5s" }}>✦</span>
+            <span className="absolute bottom-16 left-[20%] text-rose-400/25 dark:text-rose-400/15 text-xl font-bold animate-float-bob" style={{ animationDelay: "0.8s" }}>🌸</span>
+          </>
+        )}
+
+        {/* Capybara Floating Citrus & Zen Leaves Decors */}
+        {uiTheme === "capybara" && (
+          <>
+            <span className="absolute top-20 left-[7%] text-xl font-bold animate-float-bob opacity-40 select-none" style={{ animationDelay: "0.2s" }}>🍊</span>
+            <span className="absolute top-44 right-[10%] text-lg font-bold animate-float-bob-slow opacity-40 select-none" style={{ animationDelay: "1s" }}>🍃</span>
+            <span className="absolute top-[60%] left-[4%] text-xl font-bold animate-float-bob opacity-30 select-none" style={{ animationDelay: "2s" }}>🌱</span>
+            <span className="absolute top-[75%] right-[7%] text-lg font-bold animate-float-bob-slow opacity-40 select-none" style={{ animationDelay: "1.5s" }}>🍊</span>
+            <span className="absolute bottom-16 left-[18%] text-base font-bold animate-float-bob opacity-35 select-none" style={{ animationDelay: "0.8s" }}>🍩</span>
+          </>
+        )}
+
+        {/* Go Yohan Floating Cafe & Comic Decors */}
+        {uiTheme === "yohan" && (
+          <>
+            <span className="absolute top-20 left-[7%] text-xl font-bold animate-float-bob opacity-40 select-none" style={{ animationDelay: "0.2s" }}>☕</span>
+            <span className="absolute top-44 right-[10%] text-lg font-bold animate-float-bob-slow opacity-35 select-none" style={{ animationDelay: "1s" }}>👓</span>
+            <span className="absolute top-[60%] left-[4%] text-base font-bold animate-float-bob opacity-35 select-none text-rose-500" style={{ animationDelay: "2s" }}>♥</span>
+            <span className="absolute top-[75%] right-[7%] text-lg font-bold animate-float-bob-slow opacity-35 select-none" style={{ animationDelay: "1.5s" }}>📋</span>
+            <span className="absolute bottom-16 left-[18%] text-base font-bold animate-float-bob opacity-35 select-none" style={{ animationDelay: "0.8s" }}>☕</span>
+          </>
+        )}
+      </div>
+
       {/* Login error toast */}
       {loginError && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 px-4 py-3 bg-rose-600 text-white text-xs font-semibold rounded-2xl shadow-xl animate-in slide-in-from-top-2 duration-200">
@@ -934,15 +1149,19 @@ export default function App() {
         }}
         onOpenEnergyMatcher={() => setIsEnergyMatcherOpen(true)}
         onOpenTravelBuffer={() => setIsTravelBufferOpen(true)}
+        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         isOnline={isOnline}
         isDarkMode={isDarkMode}
         onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
+        uiTheme={uiTheme}
+        onToggleUiTheme={handleToggleUiTheme}
       />
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* Gemini AI Natural Language Input */}
         <NaturalLanguageInput
+          uiTheme={uiTheme}
           currentEvents={events}
           userProfile={userProfile}
           onUpdateProfile={(partial) =>
@@ -958,6 +1177,7 @@ export default function App() {
           {/* Calendar Grid (3 columns on desktop) */}
           <div className="lg:col-span-3 space-y-6">
             <CalendarGrid
+              uiTheme={uiTheme}
               currentDate={currentDate}
               onNavigateDate={(offsetDays) => {
                 const next = new Date(currentDate);
@@ -991,12 +1211,23 @@ export default function App() {
               showEnergyOverlay={showEnergyOverlay}
               onOpenEnergyMatcher={() => setIsEnergyMatcherOpen(true)}
               onOpenTravelBuffer={() => setIsTravelBufferOpen(true)}
+              onOpenPomodoroForEvent={(ev) => {
+                setPomodoroEvent(ev);
+                setIsPomodoroOpen(true);
+              }}
+              onOpenRescheduleForEvent={(eventId) => {
+                setReschedulePreselectedId(eventId);
+                setIsRescheduleOpen(true);
+              }}
+              onUpdateEventTimes={handleUpdateEventTimes}
+              onLoadSampleSchedule={handleLoadSampleSchedule}
             />
           </div>
 
           {/* Right Sidebar: Today's Schedule & Focus Widget */}
           <div className="lg:col-span-1 space-y-4">
             <TodayWidget
+              uiTheme={uiTheme}
               events={events}
               onSelectEvent={(ev) => {
                 setSelectedEvent(ev);
@@ -1012,10 +1243,11 @@ export default function App() {
                 setIsRescheduleOpen(true);
               }}
               onOpenTravelBuffer={() => setIsTravelBufferOpen(true)}
+              onLoadSampleSchedule={handleLoadSampleSchedule}
             />
 
             {/* Quick Actions Card — gọn */}
-            <div className="bg-white dark:bg-zinc-900 rounded-3xl p-4 shadow-sm border border-zinc-200/90 dark:border-zinc-800 text-xs">
+            <div className={`bg-white dark:bg-zinc-900 ${uiTheme === "cute" ? "rounded-3xl" : "rounded-2xl"} p-4 shadow-sm border border-zinc-200/90 dark:border-zinc-800 text-xs`}>
               <span className="font-semibold text-zinc-500 dark:text-zinc-400 block mb-2 uppercase tracking-wider text-[10px]">
                 Google Workspace
               </span>
@@ -1052,6 +1284,7 @@ export default function App() {
       {/* MODALS */}
       {/* Event Create / Edit Modal */}
       <EventModal
+        uiTheme={uiTheme}
         isOpen={isEventModalOpen}
         event={selectedEvent}
         onClose={() => {
@@ -1097,6 +1330,7 @@ export default function App() {
 
       {/* Pomodoro Timer Modal */}
       <PomodoroTimer
+        uiTheme={uiTheme}
         isOpen={isPomodoroOpen}
         onClose={() => setIsPomodoroOpen(false)}
         activeEvent={pomodoroEvent}
@@ -1253,8 +1487,42 @@ export default function App() {
         }}
       />
 
+      {/* Command Palette (Ctrl+K / Cmd+K) */}
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        events={events}
+        onSelectEvent={(ev) => {
+          setSelectedEvent(ev);
+          setIsEventModalOpen(true);
+        }}
+        onOpenPomodoro={() => setIsPomodoroOpen(true)}
+        onOpenAnalytics={() => setIsAnalyticsOpen(true)}
+        onOpenSheets={() => setIsSheetsOpen(true)}
+        onOpenGmail={() => setIsGmailOpen(true)}
+        onOpenTemplates={() => setIsTemplatesOpen(true)}
+        onOpenTasks={() => setIsTasksOpen(true)}
+        onOpenOcrScanner={() => setIsOcrOpen(true)}
+        onOpenTeamMeeting={() => setIsTeamMeetingOpen(true)}
+        onOpenReschedule={() => {
+          setReschedulePreselectedId(null);
+          setIsRescheduleOpen(true);
+        }}
+        onOpenEnergyMatcher={() => setIsEnergyMatcherOpen(true)}
+        onOpenTravelBuffer={() => setIsTravelBufferOpen(true)}
+        onResetToday={() => setCurrentDate(new Date())}
+        onChangeViewMode={setViewMode}
+        isDarkMode={isDarkMode}
+        onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
+        onFocusAiInput={() => {
+          const el = document.getElementById("natural-language-input-field");
+          el?.focus();
+        }}
+      />
+
       {/* User Confirmation Modal (Required by Workspace Integration Skill) */}
       <ConfirmationModal
+        uiTheme={uiTheme}
         isOpen={confirmConfig.isOpen}
         title={confirmConfig.title}
         message={confirmConfig.message}

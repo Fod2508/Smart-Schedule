@@ -11,13 +11,14 @@ import {
   VolumeX,
 } from "lucide-react";
 import confetti from "canvas-confetti";
-import { ScheduleItem } from "../types/schedule";
+import { ScheduleItem, UiTheme } from "../types/schedule";
 
 interface PomodoroTimerProps {
   isOpen: boolean;
   onClose: () => void;
   activeEvent: ScheduleItem | null;
   onPomodoroComplete?: (eventId?: string) => void;
+  uiTheme?: UiTheme;
 }
 
 export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
@@ -25,6 +26,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
   onClose,
   activeEvent,
   onPomodoroComplete,
+  uiTheme = "cute",
 }) => {
   const [mode, setMode] = useState<"focus" | "break">("focus");
   const [focusDuration, setFocusDuration] = useState(25); // 25 mins
@@ -194,8 +196,37 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
           </button>
         </div>
 
+        {/* Yohan Theme Mascot Banner */}
+        {uiTheme === "yohan" && (
+          <div className="mt-3 flex items-center justify-center gap-2 py-1 px-3 bg-zinc-50 dark:bg-zinc-800/80 rounded-2xl border border-zinc-200/80 dark:border-zinc-700/80 shadow-2xs">
+            <div className="w-10 h-10 shrink-0">
+              <img
+                src={
+                  mode === "focus"
+                    ? "/illustrations/yohan/yohan_cheering.png"
+                    : "/illustrations/yohan/yohan_waving.png"
+                }
+                alt="Go Yohan Pomodoro"
+                className="w-full h-full object-contain filter drop-shadow animate-float-bob"
+              />
+            </div>
+            <div className="text-left">
+              <p className="text-[11px] font-bold text-zinc-900 dark:text-zinc-100">
+                {mode === "focus"
+                  ? "Go Yohan: Cố lên! Fighting! 🥛"
+                  : "Go Yohan: Nghỉ ngơi chút nhé~ 🌸"}
+              </p>
+              <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                {mode === "focus"
+                  ? "Tập trung hoàn thành phiên này nào!"
+                  : "Chợp mắt hoặc uống chút nước nhé"}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Circular Display */}
-        <div className="my-6 relative flex flex-col items-center justify-center">
+        <div className="my-5 relative flex flex-col items-center justify-center">
           <div className="w-44 h-44 rounded-full border-8 border-zinc-100 dark:border-zinc-800 flex flex-col items-center justify-center relative overflow-hidden shadow-inner">
             {/* Visual fill indicator */}
             <div

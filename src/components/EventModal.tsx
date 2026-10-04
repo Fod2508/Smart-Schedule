@@ -14,12 +14,17 @@ import {
   MapPin,
   Car,
   Navigation,
+  BookOpen,
+  Briefcase,
+  Users,
+  Heart,
 } from "lucide-react";
 import {
   ScheduleItem,
   EventCategory,
   PriorityLevel,
   TransitMode,
+  UiTheme,
 } from "../types/schedule";
 
 interface EventModalProps {
@@ -30,6 +35,7 @@ interface EventModalProps {
   onDelete?: (eventId: string) => void;
   onOpenRescheduleForEvent?: (eventId: string) => void;
   hasGoogleConnected: boolean;
+  uiTheme?: UiTheme;
 }
 
 export const EventModal: React.FC<EventModalProps> = ({
@@ -40,6 +46,7 @@ export const EventModal: React.FC<EventModalProps> = ({
   onDelete,
   onOpenRescheduleForEvent,
   hasGoogleConnected,
+  uiTheme = "cute",
 }) => {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -201,38 +208,95 @@ export const EventModal: React.FC<EventModalProps> = ({
             />
           </div>
 
-          {/* Category & Priority */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                Phân loại
-              </label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value as EventCategory)}
-                className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-900 dark:text-zinc-100 font-medium"
-              >
-                <option value="study">Học tập (Study)</option>
-                <option value="work">Công việc (Work)</option>
-                <option value="meeting">Cuộc họp (Meeting)</option>
-                <option value="personal">Cá nhân (Personal)</option>
-                <option value="break">Nghỉ ngơi (Break)</option>
-              </select>
+          {/* 3D Visual Category Selector */}
+          <div>
+            <label className="block text-xs font-bold text-zinc-700 dark:text-zinc-300 mb-2 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <span>🎨</span> Phân loại hoạt động
+              </span>
+              <span className="text-[10px] font-normal text-zinc-400">
+                Chọn danh mục phù hợp
+              </span>
+            </label>
+            <div className="grid grid-cols-5 gap-2">
+              {[
+                { id: "study", label: "Học tập", img: "/illustrations/badge_study.jpg", vectorIcon: BookOpen, color: "text-violet-500 bg-violet-50 dark:bg-violet-950/40" },
+                { id: "work", label: "Công việc", img: "/illustrations/badge_work.jpg", vectorIcon: Briefcase, color: "text-sky-500 bg-sky-50 dark:bg-sky-950/40" },
+                { id: "meeting", label: "Cuộc họp", img: "/illustrations/badge_meeting.jpg", vectorIcon: Users, color: "text-emerald-500 bg-emerald-50 dark:bg-emerald-950/40" },
+                { id: "break", label: "Nghỉ ngơi", img: "/illustrations/badge_break.jpg", vectorIcon: Coffee, color: "text-amber-500 bg-amber-50 dark:bg-amber-950/40" },
+                { id: "personal", label: "Cá nhân", img: "/illustrations/badge_personal.jpg", vectorIcon: Heart, color: "text-pink-500 bg-pink-50 dark:bg-pink-950/40" },
+              ].map((cat) => {
+                const isSelected = category === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setCategory(cat.id as EventCategory)}
+                    className={`flex flex-col items-center justify-center p-2 rounded-2xl border text-center transition-all duration-200 cursor-pointer ${
+                      uiTheme === "cute" ? "squishy-pop" : ""
+                    } ${
+                      isSelected
+                        ? "border-indigo-500 dark:border-indigo-400 bg-indigo-50/80 dark:bg-indigo-950/60 ring-2 ring-indigo-500/50 shadow-sm scale-[1.03]"
+                        : "border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/40 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 opacity-75 hover:opacity-100"
+                    }`}
+                  >
+                    {uiTheme === "cute" ? (
+                      <img
+                        src={cat.img}
+                        alt={cat.label}
+                        className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-cover shadow-2xs border border-white/90 dark:border-zinc-700/80 mb-1.5 transition-transform ${
+                          isSelected ? "scale-110 shadow-xs" : ""
+                        }`}
+                      />
+                    ) : (
+                      <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center mb-1.5 ${cat.color} ${
+                        isSelected ? "ring-1 ring-indigo-500" : ""
+                      }`}>
+                        <cat.vectorIcon className="w-5 h-5" />
+                      </div>
+                    )}
+                    <span
+                      className={`text-[11px] font-bold truncate max-w-full ${
+                        isSelected
+                          ? "text-indigo-600 dark:text-indigo-400"
+                          : "text-zinc-700 dark:text-zinc-300"
+                      }`}
+                    >
+                      {cat.label}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
+          </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                Mức độ ưu tiên
-              </label>
-              <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value as PriorityLevel)}
-                className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-900 dark:text-zinc-100 font-medium"
-              >
-                <option value="high">Ưu tiên cao (Gấp / Quan trọng)</option>
-                <option value="medium">Trung bình</option>
-                <option value="low">Thấp</option>
-              </select>
+          {/* Priority selector with 3 tactile buttons */}
+          <div>
+            <label className="block text-xs font-bold text-zinc-700 dark:text-zinc-300 mb-1.5">
+              Mức độ ưu tiên
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { id: "high", label: "🔥 Ưu tiên cao", active: "bg-rose-500 text-white ring-rose-400" },
+                { id: "medium", label: "⚡ Trung bình", active: "bg-indigo-600 text-white ring-indigo-400" },
+                { id: "low", label: "🌿 Thấp", active: "bg-emerald-600 text-white ring-emerald-400" },
+              ].map((p) => {
+                const isSelected = priority === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setPriority(p.id as PriorityLevel)}
+                    className={`py-2 px-2 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer squishy-pop text-center ${
+                      isSelected
+                        ? `${p.active} shadow-xs ring-2 ring-offset-1 dark:ring-offset-zinc-900`
+                        : "bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
