@@ -14,123 +14,176 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 app.use(express.json({ limit: "10mb" }));
 
-// Helper lấy danh sách Gemini API Keys hợp lệ từ biến môi trường
-function getApiKeys(): string[] {
-  const found: string[] = [];
+// ─── Key Management (theo AI Integration Guide) ───────────────────────────────
 
-  // Ưu tiên key chính GEMINI_API_KEY, sau đó tới các key phụ _1.._5, và các biến Google khác
-  const candidates = [
-    process.env.GEMINI_API_KEY,
-    process.env.GEMINI_API_KEY_1,
-    process.env.GEMINI_API_KEY_2,
-    process.env.GEMINI_API_KEY_3,
-    process.env.GEMINI_API_KEY_4,
-    process.env.GEMINI_API_KEY_5,
-    process.env.GOOGLE_API_KEY,
-    process.env.GOOGLE_GENAI_API_KEY,
-  ];
+const COOLDOWN_MS = 60 * 1000; // 1 phút cooldown khi key bị exhausted
 
-  const addKey = (val: unknown) => {
-    if (typeof val !== "string") return;
-    // Bỏ dấu nháy kép/đơn hoặc khoảng trắng / xuống dòng do copy-paste trên dashboard Render
-    const cleaned = val
-      .trim()
-      .replace(/^["']|["']$/g, "")
-      .trim();
-    if (cleaned.length > 8 && !found.includes(cleaned)) {
-      found.push(cleaned);
+interface KeyState {
+  key: string;
+  client: GoogleGenAI;
+  exhaustedUntil: number;
+}
+
+function parseApiKeys(): string[] {
+  const cleanQuotes = (k: string) => {
+    let s = k.trim();
+    if (
+      (s.startsWith('"') && s.endsWith('"')) ||
+      (s.startsWith("'") && s.endsWith("'"))
+    ) {
+      s = s.slice(1, -1).trim();
     }
+    return s;
   };
 
-  for (const c of candidates) {
-    addKey(c);
+  const keys: string[] = [];
+
+  // Ưu tiên GEMINI_API_KEYS (comma-separated) theo guide
+  const multi = process.env.GEMINI_API_KEYS;
+  if (multi) {
+    const parsed = multi
+      .split(",")
+      .map(cleanQuotes)
+      .filter(
+        (k) =>
+          k && !k.includes("MY_KEY") && !k.includes("YOUR_") && k.length > 8,
+      );
+    keys.push(...parsed);
   }
 
-  // Quét thêm bất kỳ biến môi trường nào có chứa cụm GEMINI_API_KEY (không phân biệt hoa/thường)
-  for (const [keyName, val] of Object.entries(process.env)) {
-    if (
-      /gemini.*api.*key/i.test(keyName) ||
-      /google.*genai.*key/i.test(keyName)
-    ) {
-      addKey(val);
+  // Hỗ trợ GEMINI_API_KEY_1..5 (cách cũ)
+  for (let i = 1; i <= 5; i++) {
+    const val = process.env[`GEMINI_API_KEY_${i}`];
+    if (val) {
+      const cleaned = cleanQuotes(val);
+      if (cleaned.length > 8 && !keys.includes(cleaned)) keys.push(cleaned);
     }
   }
 
-  return found;
+  // Fallback GEMINI_API_KEY đơn
+  const single = process.env.GEMINI_API_KEY;
+  if (single) {
+    const cleaned = cleanQuotes(single);
+    if (cleaned.length > 8 && !keys.includes(cleaned)) keys.push(cleaned);
+  }
+
+  return keys;
 }
 
-const initialKeys = getApiKeys();
-if (initialKeys.length === 0) {
+const keyStates: KeyState[] = parseApiKeys().map((key) => ({
+  key,
+  client: new GoogleGenAI({ apiKey: key }),
+  exhaustedUntil: 0,
+}));
+
+if (keyStates.length === 0) {
   console.warn(
-    "[Smart Schedule] CẢNH BÁO: Không tìm thấy GEMINI_API_KEY trong biến môi trường. Các tính năng AI sẽ dùng fallback.",
+    "[Smart Schedule] CẢNH BÁO: Không tìm thấy GEMINI_API_KEY. Tính năng AI sẽ dùng fallback.",
   );
 } else {
-  console.log(
-    `[Smart Schedule] Đã nạp ${initialKeys.length} Gemini API key(s) từ biến môi trường.`,
+  console.log(`[Smart Schedule] Đã nạp ${keyStates.length} Gemini API key(s).`);
+}
+
+function getAvailableKey(): KeyState | null {
+  const now = Date.now();
+  return keyStates.find((s) => s.exhaustedUntil <= now) ?? null;
+}
+
+function markKeyExhausted(keyState: KeyState, retryDelay?: number) {
+  keyState.exhaustedUntil = Date.now() + (retryDelay ?? COOLDOWN_MS);
+  console.warn(
+    `[KeyRotation] Key ...${keyState.key.slice(-6)} exhausted, cooldown ${Math.round((retryDelay ?? COOLDOWN_MS) / 1000)}s`,
   );
 }
 
+function isRateLimitError(err: any): boolean {
+  const msg = String(err?.message || err || "").toLowerCase();
+  const status = err?.status || err?.statusCode;
+  return (
+    status === 429 ||
+    status === 503 ||
+    msg.includes("429") ||
+    msg.includes("503") ||
+    msg.includes("resource_exhausted") ||
+    msg.includes("quota") ||
+    msg.includes("rate limit") ||
+    msg.includes("unavailable") ||
+    msg.includes("overloaded")
+  );
+}
+
+function isAuthError(err: any): boolean {
+  const msg = String(err?.message || err || "").toLowerCase();
+  const status = err?.status || err?.statusCode;
+  return (
+    status === 401 ||
+    status === 403 ||
+    msg.includes("unauthenticated") ||
+    msg.includes("unauthorized") ||
+    msg.includes("invalid authentication") ||
+    msg.includes("api_key_invalid") ||
+    msg.includes("access_token_type_unsupported")
+  );
+}
+
+function getRetryDelay(err: any): number {
+  if (err?.retryDelay) return err.retryDelay;
+  if (err?.headers && typeof err.headers.get === "function") {
+    const retryAfter = parseInt(err.headers.get("retry-after"), 10);
+    if (!isNaN(retryAfter)) return retryAfter * 1000;
+  }
+  return COOLDOWN_MS;
+}
+
+// Model list theo guide — gemini-2.0-flash là primary, fallback về các model tương thích
+const MODELS = [
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-lite",
+  "gemini-1.5-flash-8b",
+];
+
 async function callGeminiSafe(options: any) {
-  const keys = getApiKeys();
-  if (keys.length === 0) {
+  if (keyStates.length === 0) {
     throw new Error(
-      "Không tìm thấy Gemini API Key. Vui lòng thêm GEMINI_API_KEY vào biến môi trường (Environment Variables) trên Render.",
+      "Không tìm thấy Gemini API Key. Vui lòng thêm GEMINI_API_KEY vào Environment Variables.",
     );
   }
 
-  const models = [
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
-    "gemini-1.5-flash",
-  ];
-  let lastErr: any = null;
+  const tried = new Set<string>();
 
-  // Thử lần lượt qua từng key. Với mỗi key, thử các model nếu cần.
-  for (let keyIdx = 0; keyIdx < keys.length; keyIdx++) {
-    const apiKey = keys[keyIdx];
-    const maskedKey = `${apiKey.substring(0, 8)}...${apiKey.substring(apiKey.length - 4)}`;
+  for (const model of MODELS) {
+    // Reset tried keys khi thử model mới
+    tried.clear();
 
-    for (const model of models) {
+    while (true) {
+      const keyState = getAvailableKey();
+      if (!keyState || tried.has(keyState.key)) break; // Hết key cho model này, thử model tiếp theo
+
+      tried.add(keyState.key);
       try {
-        const aiClient = new GoogleGenAI({ apiKey });
-        const result = await aiClient.models.generateContent({
+        const result = await keyState.client.models.generateContent({
           ...options,
           model,
         });
-        console.log(
-          `[AI] ✓ Thành công: model=${model} (Key #${keyIdx + 1}: ${maskedKey})`,
-        );
+        console.log(`[AI] ✓ model=${model} key=...${keyState.key.slice(-6)}`);
         return result;
       } catch (err: any) {
-        lastErr = err;
-        const msg = (err?.message || "").toLowerCase();
         console.warn(
-          `[AI] ✗ Thất bại: model=${model} (Key #${keyIdx + 1}: ${maskedKey}) -> ${err?.message?.substring(0, 140)}`,
+          `[AI] ✗ model=${model} key=...${keyState.key.slice(-6)} err=${(err?.message || "").substring(0, 100)}`,
         );
-
-        // Nếu key bị hết quota, 429, hoặc bị lỗi quyền (401, 403, invalid key, token type unsupported)
-        // -> chuyển sang key tiếp theo ngay lập tức
-        if (
-          msg.includes("quota") ||
-          msg.includes("resource_exhausted") ||
-          msg.includes("429") ||
-          msg.includes("401") ||
-          msg.includes("403") ||
-          msg.includes("invalid") ||
-          msg.includes("permission_denied") ||
-          msg.includes("unregistered") ||
-          msg.includes("access_token_type_unsupported")
-        ) {
-          break; // Thoát model loop để sang key tiếp theo
+        if (isRateLimitError(err) || isAuthError(err)) {
+          markKeyExhausted(keyState, getRetryDelay(err));
+          continue; // Thử key tiếp theo
         }
-
-        // Lỗi do model (503 overloaded, model not found, etc.) -> thử model tiếp theo với cùng key
-        continue;
+        // Lỗi khác (model not found, bad request...) → thử model tiếp theo
+        break;
       }
     }
   }
 
-  throw lastErr;
+  throw new Error(
+    "Tất cả Gemini API keys đều đang bị giới hạn hoặc không khả dụng. Vui lòng thử lại sau.",
+  );
 }
 
 // AI Route 1: Natural Language Schedule Parser & Smart Scheduler
@@ -722,11 +775,10 @@ Quy tắc phân tích:
     return res.json(parsedData);
   } catch (error: any) {
     console.error("Error in OCR schedule endpoint:", error);
-    const keys = getApiKeys();
-    if (keys.length === 0) {
+    if (keyStates.length === 0) {
       return res.status(503).json({
         error:
-          "Tính năng OCR cần Gemini API Key. Vui lòng thêm GEMINI_API_KEY vào biến môi trường (Environment Variables) trên Render.",
+          "Tính năng OCR cần Gemini API Key. Vui lòng thêm GEMINI_API_KEYS vào biến môi trường trên Render.",
         summary: "Chưa cấu hình API Key",
         totalItemsDetected: 0,
         items: [],
@@ -1589,12 +1641,12 @@ app.get("/health", (_req, res) => {
 
 // AI Diagnostics / Debug Status endpoint — dùng kiểm tra trạng thái API keys & kết nối Gemini trên Render
 app.get("/api/ai/debug-status", async (_req, res) => {
-  const keys = getApiKeys();
-  const maskedKeys = keys.map((k, idx) => ({
+  const keys = keyStates.map((s, idx) => ({
     index: idx + 1,
-    masked: `${k.substring(0, 8)}...${k.substring(k.length - 4)}`,
-    length: k.length,
-    prefix: k.substring(0, 4),
+    masked: `${s.key.substring(0, 8)}...${s.key.substring(s.key.length - 4)}`,
+    length: s.key.length,
+    prefix: s.key.substring(0, 4),
+    available: s.exhaustedUntil <= Date.now(),
   }));
 
   const pingTest: {
@@ -1611,7 +1663,7 @@ app.get("/api/ai/debug-status", async (_req, res) => {
     latencyMs: 0,
   };
 
-  if (keys.length > 0) {
+  if (keyStates.length > 0) {
     pingTest.tested = true;
     const start = Date.now();
     try {
@@ -1632,13 +1684,13 @@ app.get("/api/ai/debug-status", async (_req, res) => {
   res.json({
     status: pingTest.success
       ? "healthy"
-      : keys.length === 0
+      : keyStates.length === 0
         ? "no_keys"
         : "api_error",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV || "development",
-    totalKeysDetected: keys.length,
-    keys: maskedKeys,
+    totalKeysDetected: keyStates.length,
+    keys,
     geminiPingTest: pingTest,
   });
 });
