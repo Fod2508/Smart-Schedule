@@ -148,59 +148,122 @@ function getRetryDelay(err: any): number {
   return COOLDOWN_MS;
 }
 
-// Model list theo guide — gemini-2.0-flash là primary, fallback về các model tương thích
+// Model list — thử từ mới nhất tới cũ nhất
 const MODELS = [
   "gemini-2.0-flash",
   "gemini-2.0-flash-lite",
   "gemini-1.5-flash-8b",
 ];
 
-async function callGeminiSafe(options: any) {
+/**
+ * Chuyển đổi options từ format generateContent sang Interactions API format.
+ * Auth keys (AQ.) cần Interactions API, standard keys dùng generateContent.
+ */
+async function callWithKeyRotation(
+  fn: (client: GoogleGenAI, model: string) => Promise<any>,
+): Promise<any> {
   if (keyStates.length === 0) {
-    throw new Error(
-      "Không tìm thấy Gemini API Key. Vui lòng thêm GEMINI_API_KEY vào Environment Variables.",
-    );
+    throw new Error("Không tìm thấy Gemini API Key.");
   }
 
   const tried = new Set<string>();
 
   for (const model of MODELS) {
-    // Reset tried keys khi thử model mới
     tried.clear();
-
     while (true) {
       const keyState = getAvailableKey();
-      if (!keyState || tried.has(keyState.key)) break; // Hết key cho model này, thử model tiếp theo
-
+      if (!keyState || tried.has(keyState.key)) break;
       tried.add(keyState.key);
       try {
-        const result = await keyState.client.models.generateContent({
-          ...options,
-          model,
-        });
+        const result = await fn(keyState.client, model);
         console.log(`[AI] ✓ model=${model} key=...${keyState.key.slice(-6)}`);
         return result;
       } catch (err: any) {
         console.warn(
-          `[AI] ✗ model=${model} key=...${keyState.key.slice(-6)} err=${(err?.message || "").substring(0, 100)}`,
+          `[AI] ✗ model=${model} key=...${keyState.key.slice(-6)} err=${(err?.message || "").substring(0, 120)}`,
         );
         if (isRateLimitError(err) || isAuthError(err)) {
           markKeyExhausted(keyState, getRetryDelay(err));
-          continue; // Thử key tiếp theo
+          continue;
         }
-        if (isModelNotFoundError(err)) {
-          // Model này không tồn tại với key này → thử model tiếp theo, giữ nguyên key
-          break;
-        }
-        // Lỗi khác (bad request, schema error...) → throw ngay, không retry
-        throw err;
+        if (isModelNotFoundError(err)) break; // Thử model tiếp theo
+        throw err; // Lỗi schema/prompt → throw ngay
       }
     }
   }
-
   throw new Error(
-    "Tất cả Gemini API keys đều đang bị giới hạn hoặc không khả dụng. Vui lòng thử lại sau.",
+    "Tất cả Gemini API keys đều không khả dụng. Vui lòng thử lại sau.",
   );
+}
+
+async function callGeminiSafe(options: any) {
+  if (keyStates.length === 0) {
+    throw new Error(
+      "Không tìm thấy Gemini API Key. Vui lòng thêm GEMINI_API_KEYS vào Environment Variables.",
+    );
+  }
+
+  // Thử Interactions API trước (cho auth keys AQ.), fallback về generateContent
+  return callWithKeyRotation(async (client, model) => {
+    // Thử Interactions API (hoạt động với cả auth keys AQ. và standard keys)
+    try {
+      const interactionParams: any = { model, store: false };
+
+      // Chuyển đổi contents
+      if (typeof options.contents === "string") {
+        interactionParams.input = { parts: [{ text: options.contents }] };
+      } else if (Array.isArray(options.contents)) {
+        const lastUser = [...options.contents]
+          .reverse()
+          .find((c: any) => c.role === "user");
+        if (lastUser?.parts) {
+          interactionParams.input = { parts: lastUser.parts };
+        } else {
+          interactionParams.input = {
+            parts: [{ text: JSON.stringify(options.contents) }],
+          };
+        }
+      }
+
+      // Config: systemInstruction, responseFormat
+      if (options.config?.systemInstruction) {
+        interactionParams.system_instruction = options.config.systemInstruction;
+      }
+      if (
+        options.config?.responseMimeType === "application/json" &&
+        options.config?.responseSchema
+      ) {
+        interactionParams.response_format = {
+          type: "json_schema",
+          json_schema: options.config.responseSchema,
+        };
+      }
+
+      const interaction = await client.interactions.create(interactionParams);
+      // Normalize response format giống generateContent
+      const text =
+        (interaction as any).output?.parts?.[0]?.text ||
+        (interaction as any).output?.text ||
+        (interaction as any).text ||
+        "";
+      return { text };
+    } catch (interactionErr: any) {
+      const msg = (interactionErr?.message || "").toLowerCase();
+      // Nếu Interactions API không support → fallback generateContent
+      if (
+        msg.includes("not found") ||
+        msg.includes("404") ||
+        msg.includes("not supported") ||
+        msg.includes("invalid")
+      ) {
+        console.warn(
+          `[AI] Interactions API failed, trying generateContent: ${interactionErr?.message?.substring(0, 80)}`,
+        );
+        return await client.models.generateContent({ ...options, model });
+      }
+      throw interactionErr;
+    }
+  });
 }
 
 // AI Route 1: Natural Language Schedule Parser & Smart Scheduler
