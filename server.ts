@@ -209,17 +209,21 @@ async function callGeminiSafe(options: any) {
     try {
       const interactionParams: any = { model, store: false };
 
-      // Chuyển đổi contents
+      // Chuyển đổi contents — Interactions API yêu cầu input.type
       if (typeof options.contents === "string") {
-        interactionParams.input = { parts: [{ text: options.contents }] };
+        interactionParams.input = {
+          type: "text",
+          parts: [{ text: options.contents }],
+        };
       } else if (Array.isArray(options.contents)) {
         const lastUser = [...options.contents]
           .reverse()
           .find((c: any) => c.role === "user");
         if (lastUser?.parts) {
-          interactionParams.input = { parts: lastUser.parts };
+          interactionParams.input = { type: "text", parts: lastUser.parts };
         } else {
           interactionParams.input = {
+            type: "text",
             parts: [{ text: JSON.stringify(options.contents) }],
           };
         }
