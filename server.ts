@@ -126,6 +126,19 @@ function isAuthError(err: any): boolean {
   );
 }
 
+function isModelNotFoundError(err: any): boolean {
+  const msg = String(err?.message || err || "").toLowerCase();
+  const status = err?.status || err?.statusCode;
+  return (
+    status === 404 ||
+    msg.includes("not found") ||
+    msg.includes("not_found") ||
+    msg.includes("no longer available") ||
+    msg.includes("is not supported") ||
+    msg.includes("does not exist")
+  );
+}
+
 function getRetryDelay(err: any): number {
   if (err?.retryDelay) return err.retryDelay;
   if (err?.headers && typeof err.headers.get === "function") {
@@ -175,8 +188,12 @@ async function callGeminiSafe(options: any) {
           markKeyExhausted(keyState, getRetryDelay(err));
           continue; // Thử key tiếp theo
         }
-        // Lỗi khác (model not found, bad request...) → thử model tiếp theo
-        break;
+        if (isModelNotFoundError(err)) {
+          // Model này không tồn tại với key này → thử model tiếp theo, giữ nguyên key
+          break;
+        }
+        // Lỗi khác (bad request, schema error...) → throw ngay, không retry
+        throw err;
       }
     }
   }
