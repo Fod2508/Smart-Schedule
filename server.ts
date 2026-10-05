@@ -14,56 +14,112 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 app.use(express.json({ limit: "10mb" }));
 
-// Initialize Google GenAI với nhiều API keys để xoay vòng khi hết quota
-const API_KEYS = [
-  process.env.GEMINI_API_KEY_1,
-  process.env.GEMINI_API_KEY_2,
-  process.env.GEMINI_API_KEY_3,
-  process.env.GEMINI_API_KEY_4,
-  process.env.GEMINI_API_KEY_5,
-  process.env.GEMINI_API_KEY, // fallback key đơn
-].filter(Boolean) as string[];
+// Helper lấy danh sách Gemini API Keys hợp lệ từ biến môi trường
+function getApiKeys(): string[] {
+  const found: string[] = [];
 
-if (API_KEYS.length === 0) {
+  // Ưu tiên key chính GEMINI_API_KEY, sau đó tới các key phụ _1.._5, và các biến Google khác
+  const candidates = [
+    process.env.GEMINI_API_KEY,
+    process.env.GEMINI_API_KEY_1,
+    process.env.GEMINI_API_KEY_2,
+    process.env.GEMINI_API_KEY_3,
+    process.env.GEMINI_API_KEY_4,
+    process.env.GEMINI_API_KEY_5,
+    process.env.GOOGLE_API_KEY,
+    process.env.GOOGLE_GENAI_API_KEY,
+  ];
+
+  const addKey = (val: unknown) => {
+    if (typeof val !== "string") return;
+    // Bỏ dấu nháy kép/đơn hoặc khoảng trắng / xuống dòng do copy-paste trên dashboard Render
+    const cleaned = val.trim().replace(/^["']|["']$/g, "").trim();
+    if (cleaned.length > 8 && !found.includes(cleaned)) {
+      found.push(cleaned);
+    }
+  };
+
+  for (const c of candidates) {
+    addKey(c);
+  }
+
+  // Quét thêm bất kỳ biến môi trường nào có chứa cụm GEMINI_API_KEY (không phân biệt hoa/thường)
+  for (const [keyName, val] of Object.entries(process.env)) {
+    if (/gemini.*api.*key/i.test(keyName) || /google.*genai.*key/i.test(keyName)) {
+      addKey(val);
+    }
+  }
+
+  return found;
+}
+
+const initialKeys = getApiKeys();
+if (initialKeys.length === 0) {
   console.warn(
-    "[Smart Schedule] CẢNH BÁO: Không tìm thấy GEMINI_API_KEY. Các tính năng AI sẽ dùng fallback.",
+    "[Smart Schedule] CẢNH BÁO: Không tìm thấy GEMINI_API_KEY trong biến môi trường. Các tính năng AI sẽ dùng fallback.",
+  );
+} else {
+  console.log(
+    `[Smart Schedule] Đã nạp ${initialKeys.length} Gemini API key(s) từ biến môi trường.`,
   );
 }
 
-const PRIMARY_MODEL = "gemini-2.0-flash";
-const LITE_MODEL = "gemini-2.0-flash-lite";
-
 async function callGeminiSafe(options: any) {
-  const models = [PRIMARY_MODEL, LITE_MODEL, "gemini-1.5-flash"];
+  const keys = getApiKeys();
+  if (keys.length === 0) {
+    throw new Error(
+      "Không tìm thấy Gemini API Key. Vui lòng thêm GEMINI_API_KEY vào biến môi trường (Environment Variables) trên Render.",
+    );
+  }
+
+  const models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash"];
   let lastErr: any = null;
 
-  // Thử từng key × từng model — xoay vòng key trước, rồi mới xuống model
-  for (const model of models) {
-    for (const apiKey of API_KEYS) {
+  // Thử lần lượt qua từng key. Với mỗi key, thử các model nếu cần.
+  for (let keyIdx = 0; keyIdx < keys.length; keyIdx++) {
+    const apiKey = keys[keyIdx];
+    const maskedKey = `${apiKey.substring(0, 8)}...${apiKey.substring(apiKey.length - 4)}`;
+
+    for (const model of models) {
       try {
         const aiClient = new GoogleGenAI({ apiKey });
-        return await aiClient.models.generateContent({
+        const result = await aiClient.models.generateContent({
           ...options,
           model,
         });
+        console.log(
+          `[AI] ✓ Thành công: model=${model} (Key #${keyIdx + 1}: ${maskedKey})`,
+        );
+        return result;
       } catch (err: any) {
         lastErr = err;
         const msg = (err?.message || "").toLowerCase();
+        console.warn(
+          `[AI] ✗ Thất bại: model=${model} (Key #${keyIdx + 1}: ${maskedKey}) -> ${err?.message?.substring(0, 140)}`,
+        );
+
+        // Nếu key bị hết quota, 429, hoặc bị lỗi quyền (401, 403, invalid key, token type unsupported)
+        // -> chuyển sang key tiếp theo ngay lập tức
         if (
-          msg.includes("resource_exhausted") ||
           msg.includes("quota") ||
-          msg.includes("rate") ||
+          msg.includes("resource_exhausted") ||
           msg.includes("429") ||
-          msg.includes("overloaded")
+          msg.includes("401") ||
+          msg.includes("403") ||
+          msg.includes("invalid") ||
+          msg.includes("permission_denied") ||
+          msg.includes("unregistered") ||
+          msg.includes("access_token_type_unsupported")
         ) {
-          console.warn(`[AI] Key/Model ${model} quota limited, trying next...`);
-          continue; // Thử key tiếp theo
+          break; // Thoát model loop để sang key tiếp theo
         }
-        // Lỗi khác (không phải quota) → thử model tiếp theo
-        break;
+
+        // Lỗi do model (503 overloaded, model not found, etc.) -> thử model tiếp theo với cùng key
+        continue;
       }
     }
   }
+
   throw lastErr;
 }
 
@@ -228,7 +284,20 @@ Yêu cầu logic quan trọng:
         dayOffsets.push(6);
 
       if (dayOffsets.length === 0) {
-        dayOffsets.push(0);
+        // Thử detect số buổi từ prompt (ví dụ: "4 buổi", "3 lần", "5 sessions")
+        const countMatch = lower.match(
+          /(\d+)\s*(?:buổi|lần|session|tiết|ngày)/,
+        );
+        const sessionCount = countMatch
+          ? Math.min(parseInt(countMatch[1]), 7)
+          : 1;
+
+        // Phân bổ đều trong tuần
+        const allDays = [0, 1, 2, 3, 4, 5, 6]; // T2 → CN
+        // Ưu tiên sáng sớm tuần
+        for (let i = 0; i < sessionCount; i++) {
+          dayOffsets.push(allDays[i % 7]);
+        }
       }
 
       let cat = "study";
@@ -643,13 +712,11 @@ Quy tắc phân tích:
     return res.json(parsedData);
   } catch (error: any) {
     console.error("Error in OCR schedule endpoint:", error);
-    const isApiKeyError =
-      !process.env.GEMINI_API_KEY ||
-      process.env.GEMINI_API_KEY === "your_gemini_api_key_here";
-    if (isApiKeyError) {
+    const keys = getApiKeys();
+    if (keys.length === 0) {
       return res.status(503).json({
         error:
-          "Tính năng OCR cần Gemini API Key. Vui lòng thêm GEMINI_API_KEY vào file .env",
+          "Tính năng OCR cần Gemini API Key. Vui lòng thêm GEMINI_API_KEY vào biến môi trường (Environment Variables) trên Render.",
         summary: "Chưa cấu hình API Key",
         totalItemsDetected: 0,
         items: [],
@@ -657,7 +724,7 @@ Quy tắc phân tích:
     }
     return res.status(500).json({
       error:
-        error.message || "Lỗi nhận diện ảnh thời khóa biểu. Vui lòng thử lại.",
+        `Lỗi nhận diện AI: ${error?.message || "Không thể xử lý ảnh"}. Vui lòng thử lại hoặc kiểm tra API key.`,
       summary: "Không thể nhận diện ảnh",
       totalItemsDetected: 0,
       items: [],
@@ -1502,6 +1569,71 @@ Nhiệm vụ của bạn:
   }
 });
 
+// Health check endpoint — dùng cho cron job ping để giữ server khỏi sleep
+app.get("/health", (_req, res) => {
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+
+// AI Diagnostics / Debug Status endpoint — dùng kiểm tra trạng thái API keys & kết nối Gemini trên Render
+app.get("/api/ai/debug-status", async (_req, res) => {
+  const keys = getApiKeys();
+  const maskedKeys = keys.map((k, idx) => ({
+    index: idx + 1,
+    masked: `${k.substring(0, 8)}...${k.substring(k.length - 4)}`,
+    length: k.length,
+    prefix: k.substring(0, 4),
+  }));
+
+  const pingTest: {
+    tested: boolean;
+    success: boolean;
+    modelUsed: string;
+    latencyMs: number;
+    responsePreview?: string;
+    error?: string;
+  } = {
+    tested: false,
+    success: false,
+    modelUsed: "",
+    latencyMs: 0,
+  };
+
+  if (keys.length > 0) {
+    pingTest.tested = true;
+    const start = Date.now();
+    try {
+      const response = await callGeminiSafe({
+        contents: "Xin chào, hãy trả lời đúng 2 từ: Sẵn sàng",
+      });
+      pingTest.success = true;
+      pingTest.latencyMs = Date.now() - start;
+      pingTest.modelUsed = "gemini-2.0-flash";
+      pingTest.responsePreview = response?.text?.trim()?.substring(0, 50);
+    } catch (err: any) {
+      pingTest.success = false;
+      pingTest.latencyMs = Date.now() - start;
+      pingTest.error = err?.message || String(err);
+    }
+  }
+
+  res.json({
+    status: pingTest.success
+      ? "healthy"
+      : keys.length === 0
+        ? "no_keys"
+        : "api_error",
+    timestamp: new Date().toISOString(),
+    nodeEnv: process.env.NODE_ENV || "development",
+    totalKeysDetected: keys.length,
+    keys: maskedKeys,
+    geminiPingTest: pingTest,
+  });
+});
+
 // Vite middleware in dev or static files in production
 if (process.env.NODE_ENV !== "production") {
   const { createServer: createViteServer } = await import("vite");
@@ -1516,15 +1648,6 @@ if (process.env.NODE_ENV !== "production") {
     res.sendFile(path.resolve(__dirname, "dist", "index.html"));
   });
 }
-
-// Health check endpoint — dùng cho cron job ping để giữ server khỏi sleep
-app.get("/health", (_req, res) => {
-  res.json({
-    status: "ok",
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-  });
-});
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`[Smart Schedule] Server started on port ${PORT}`);
