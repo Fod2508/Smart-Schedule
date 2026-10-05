@@ -152,13 +152,9 @@ function getRetryDelay(err: any): number {
 const MODELS = [
   "gemini-2.0-flash",
   "gemini-2.0-flash-lite",
-  "gemini-1.5-flash-8b",
+  "gemini-1.5-flash",
 ];
 
-/**
- * Chuyển đổi options từ format generateContent sang Interactions API format.
- * Auth keys (AQ.) cần Interactions API, standard keys dùng generateContent.
- */
 async function callWithKeyRotation(
   fn: (client: GoogleGenAI, model: string) => Promise<any>,
 ): Promise<any> {
@@ -166,105 +162,66 @@ async function callWithKeyRotation(
     throw new Error("Không tìm thấy Gemini API Key.");
   }
 
-  const tried = new Set<string>();
+  let lastErr: any = null;
+  const attemptedErrors: string[] = [];
 
   for (const model of MODELS) {
-    tried.clear();
-    while (true) {
-      const keyState = getAvailableKey();
-      if (!keyState || tried.has(keyState.key)) break;
-      tried.add(keyState.key);
+    for (const keyState of keyStates) {
+      const now = Date.now();
+      const anyAvailable = keyStates.some((s) => s.exhaustedUntil <= now);
+      // Nếu có key khả dụng thì bỏ qua key đang cooldown, nếu tất cả đều cooldown thì vẫn thử tiếp
+      if (anyAvailable && keyState.exhaustedUntil > now) {
+        continue;
+      }
+
       try {
         const result = await fn(keyState.client, model);
-        console.log(`[AI] ✓ model=${model} key=...${keyState.key.slice(-6)}`);
+        console.log(
+          `[AI] ✓ Thành công: model=${model} key=...${keyState.key.slice(-6)}`,
+        );
+        keyState.exhaustedUntil = 0; // Reset cooldown khi thành công
         return result;
       } catch (err: any) {
+        lastErr = err;
+        const msg = String(err?.message || err || "");
+        const status = err?.status || err?.statusCode || "";
         console.warn(
-          `[AI] ✗ model=${model} key=...${keyState.key.slice(-6)} err=${(err?.message || "").substring(0, 120)}`,
+          `[AI] ✗ model=${model} key=...${keyState.key.slice(-6)} [${status}] err=${msg.substring(0, 140)}`,
         );
+        attemptedErrors.push(
+          `[${model} key...${keyState.key.slice(-4)}: ${status} ${msg.substring(0, 80)}]`,
+        );
+
         if (isRateLimitError(err) || isAuthError(err)) {
           markKeyExhausted(keyState, getRetryDelay(err));
           continue;
         }
-        if (isModelNotFoundError(err)) break; // Thử model tiếp theo
-        throw err; // Lỗi schema/prompt → throw ngay
+        if (isModelNotFoundError(err)) {
+          break; // Model này không hỗ trợ, chuyển sang model tiếp theo
+        }
+        continue;
       }
     }
   }
+
+  const detailedMsg = lastErr?.message || String(lastErr);
   throw new Error(
-    "Tất cả Gemini API keys đều không khả dụng. Vui lòng thử lại sau.",
+    `Tất cả Gemini API keys đều không khả dụng. Lỗi gần nhất: ${detailedMsg} (Lịch sử: ${attemptedErrors.slice(0, 4).join("; ")})`,
   );
 }
 
 async function callGeminiSafe(options: any) {
   if (keyStates.length === 0) {
     throw new Error(
-      "Không tìm thấy Gemini API Key. Vui lòng thêm GEMINI_API_KEYS vào Environment Variables.",
+      "Không tìm thấy Gemini API Key. Vui lòng thêm GEMINI_API_KEYS hoặc GEMINI_API_KEY vào Environment Variables trên Render.",
     );
   }
 
-  // Thử Interactions API trước (cho auth keys AQ.), fallback về generateContent
   return callWithKeyRotation(async (client, model) => {
-    // Thử Interactions API (hoạt động với cả auth keys AQ. và standard keys)
-    try {
-      const interactionParams: any = { model, store: false };
-
-      // Chuyển đổi contents — Interactions API nhận string hoặc Content object
-      if (typeof options.contents === "string") {
-        interactionParams.input = options.contents;
-      } else if (Array.isArray(options.contents)) {
-        const lastUser = [...options.contents]
-          .reverse()
-          .find((c: any) => c.role === "user");
-        if (lastUser?.parts?.[0]?.text && lastUser.parts.length === 1) {
-          // Chỉ text → dùng string đơn giản
-          interactionParams.input = lastUser.parts[0].text;
-        } else if (lastUser?.parts) {
-          // Có inline images (OCR) → giữ nguyên Content object
-          interactionParams.input = lastUser;
-        } else {
-          interactionParams.input = JSON.stringify(options.contents);
-        }
-      }
-
-      // Config: systemInstruction, responseFormat
-      if (options.config?.systemInstruction) {
-        interactionParams.system_instruction = options.config.systemInstruction;
-      }
-      if (
-        options.config?.responseMimeType === "application/json" &&
-        options.config?.responseSchema
-      ) {
-        interactionParams.response_format = {
-          type: "json_schema",
-          json_schema: options.config.responseSchema,
-        };
-      }
-
-      const interaction = await client.interactions.create(interactionParams);
-      // Normalize response format giống generateContent
-      const text =
-        (interaction as any).output?.parts?.[0]?.text ||
-        (interaction as any).output?.text ||
-        (interaction as any).text ||
-        "";
-      return { text };
-    } catch (interactionErr: any) {
-      const msg = (interactionErr?.message || "").toLowerCase();
-      // Nếu Interactions API không support → fallback generateContent
-      if (
-        msg.includes("not found") ||
-        msg.includes("404") ||
-        msg.includes("not supported") ||
-        msg.includes("invalid")
-      ) {
-        console.warn(
-          `[AI] Interactions API failed, trying generateContent: ${interactionErr?.message?.substring(0, 80)}`,
-        );
-        return await client.models.generateContent({ ...options, model });
-      }
-      throw interactionErr;
-    }
+    return await client.models.generateContent({
+      ...options,
+      model,
+    });
   });
 }
 
@@ -1747,6 +1704,8 @@ app.get("/api/ai/debug-status", async (_req, res) => {
 
   if (keyStates.length > 0) {
     pingTest.tested = true;
+    // Reset cooldown để debug-status luôn test được trực tiếp
+    keyStates.forEach((s) => (s.exhaustedUntil = 0));
     const start = Date.now();
     try {
       const response = await callGeminiSafe({
@@ -1772,7 +1731,13 @@ app.get("/api/ai/debug-status", async (_req, res) => {
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV || "development",
     totalKeysDetected: keyStates.length,
-    keys,
+    keys: keyStates.map((s, idx) => ({
+      index: idx + 1,
+      masked: `${s.key.substring(0, 8)}...${s.key.substring(s.key.length - 4)}`,
+      length: s.key.length,
+      prefix: s.key.substring(0, 4),
+      available: s.exhaustedUntil <= Date.now(),
+    })),
     geminiPingTest: pingTest,
   });
 });
