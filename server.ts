@@ -33,7 +33,10 @@ function getApiKeys(): string[] {
   const addKey = (val: unknown) => {
     if (typeof val !== "string") return;
     // Bỏ dấu nháy kép/đơn hoặc khoảng trắng / xuống dòng do copy-paste trên dashboard Render
-    const cleaned = val.trim().replace(/^["']|["']$/g, "").trim();
+    const cleaned = val
+      .trim()
+      .replace(/^["']|["']$/g, "")
+      .trim();
     if (cleaned.length > 8 && !found.includes(cleaned)) {
       found.push(cleaned);
     }
@@ -45,7 +48,10 @@ function getApiKeys(): string[] {
 
   // Quét thêm bất kỳ biến môi trường nào có chứa cụm GEMINI_API_KEY (không phân biệt hoa/thường)
   for (const [keyName, val] of Object.entries(process.env)) {
-    if (/gemini.*api.*key/i.test(keyName) || /google.*genai.*key/i.test(keyName)) {
+    if (
+      /gemini.*api.*key/i.test(keyName) ||
+      /google.*genai.*key/i.test(keyName)
+    ) {
       addKey(val);
     }
   }
@@ -72,7 +78,11 @@ async function callGeminiSafe(options: any) {
     );
   }
 
-  const models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash"];
+  const models = [
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-1.5-flash",
+  ];
   let lastErr: any = null;
 
   // Thử lần lượt qua từng key. Với mỗi key, thử các model nếu cần.
@@ -723,8 +733,7 @@ Quy tắc phân tích:
       });
     }
     return res.status(500).json({
-      error:
-        `Lỗi nhận diện AI: ${error?.message || "Không thể xử lý ảnh"}. Vui lòng thử lại hoặc kiểm tra API key.`,
+      error: `Lỗi nhận diện AI: ${error?.message || "Không thể xử lý ảnh"}. Vui lòng thử lại hoặc kiểm tra API key.`,
       summary: "Không thể nhận diện ảnh",
       totalItemsDetected: 0,
       items: [],
