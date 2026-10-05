@@ -148,24 +148,93 @@ function getRetryDelay(err: any): number {
   return COOLDOWN_MS;
 }
 
-// Model list — thử từ mới nhất tới cũ nhất
-const MODELS = [
-  "gemini-2.0-flash",
-  "gemini-2.0-flash-lite",
-  "gemini-1.5-flash",
+let cachedModels: string[] = [];
+let lastModelsFetch = 0;
+
+// Danh sách dự phòng nếu không fetch được từ Google API
+const FALLBACK_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.5-pro",
+  "gemini-3.7-flash",
+  "gemini-3.8-flash",
+  "gemini-2.0-flash-001",
+  "gemini-1.5-flash-latest",
+  "gemini-1.5-pro",
+  "gemini-1.5-pro-latest",
 ];
+
+async function getAvailableModels(apiKey: string): Promise<string[]> {
+  const now = Date.now();
+  if (cachedModels.length > 0 && now - lastModelsFetch < 3600000) {
+    return cachedModels;
+  }
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+      {
+        headers: {
+          "x-goog-api-key": apiKey,
+        },
+      },
+    );
+    if (res.ok) {
+      const data: any = await res.json();
+      if (Array.isArray(data.models)) {
+        const found = data.models
+          .filter(
+            (m: any) =>
+              Array.isArray(m.supportedGenerationMethods) &&
+              m.supportedGenerationMethods.includes("generateContent"),
+          )
+          .map((m: any) => m.name.replace(/^models\//, ""))
+          // Ưu tiên flash lên trước, các phiên bản 2.5/3.x lên đầu
+          .sort((a: string, b: string) => {
+            const score = (name: string) => {
+              let s = 0;
+              if (name.includes("flash")) s += 10;
+              if (name.includes("2.5") || name.includes("3.")) s += 20;
+              if (name.includes("preview") || name.includes("exp")) s -= 5;
+              return s;
+            };
+            return score(b) - score(a);
+          });
+
+        if (found.length > 0) {
+          console.log(
+            `[AI] Tự động phát hiện ${found.length} model(s) hỗ trợ generateContent:`,
+            found.slice(0, 5),
+          );
+          cachedModels = found;
+          lastModelsFetch = now;
+          return found;
+        }
+      }
+    } else {
+      console.warn(`[AI] ListModels trả về status ${res.status}`);
+    }
+  } catch (err: any) {
+    console.warn("[AI] Không thể fetch danh sách models từ Google:", err?.message);
+  }
+
+  return FALLBACK_MODELS;
+}
 
 async function callWithKeyRotation(
   fn: (client: GoogleGenAI, model: string) => Promise<any>,
-): Promise<any> {
+): Promise<{ result: any; modelUsed: string }> {
   if (keyStates.length === 0) {
     throw new Error("Không tìm thấy Gemini API Key.");
   }
 
+  // Tự động lấy danh sách models khả dụng từ Google API với key đầu tiên
+  const firstKey = keyStates[0].key;
+  const models = await getAvailableModels(firstKey);
+
   let lastErr: any = null;
   const attemptedErrors: string[] = [];
 
-  for (const model of MODELS) {
+  for (const model of models) {
     for (const keyState of keyStates) {
       const now = Date.now();
       const anyAvailable = keyStates.some((s) => s.exhaustedUntil <= now);
@@ -180,7 +249,7 @@ async function callWithKeyRotation(
           `[AI] ✓ Thành công: model=${model} key=...${keyState.key.slice(-6)}`,
         );
         keyState.exhaustedUntil = 0; // Reset cooldown khi thành công
-        return result;
+        return { result, modelUsed: model };
       } catch (err: any) {
         lastErr = err;
         const msg = String(err?.message || err || "");
@@ -217,12 +286,18 @@ async function callGeminiSafe(options: any) {
     );
   }
 
-  return callWithKeyRotation(async (client, model) => {
+  const { result, modelUsed } = await callWithKeyRotation(async (client, model) => {
     return await client.models.generateContent({
       ...options,
       model,
     });
   });
+
+  // Gắn kèm modelUsed vào result để client hoặc logging dễ dàng kiểm tra
+  if (result && typeof result === "object") {
+    (result as any).modelUsed = modelUsed;
+  }
+  return result;
 }
 
 // AI Route 1: Natural Language Schedule Parser & Smart Scheduler
@@ -1713,7 +1788,7 @@ app.get("/api/ai/debug-status", async (_req, res) => {
       });
       pingTest.success = true;
       pingTest.latencyMs = Date.now() - start;
-      pingTest.modelUsed = "gemini-2.0-flash";
+      pingTest.modelUsed = (response as any)?.modelUsed || "auto-detected";
       pingTest.responsePreview = response?.text?.trim()?.substring(0, 50);
     } catch (err: any) {
       pingTest.success = false;
@@ -1731,6 +1806,7 @@ app.get("/api/ai/debug-status", async (_req, res) => {
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV || "development",
     totalKeysDetected: keyStates.length,
+    discoveredModels: cachedModels.slice(0, 10),
     keys: keyStates.map((s, idx) => ({
       index: idx + 1,
       masked: `${s.key.substring(0, 8)}...${s.key.substring(s.key.length - 4)}`,
