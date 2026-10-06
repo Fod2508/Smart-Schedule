@@ -1818,6 +1818,11 @@ app.get("/api/ai/debug-status", async (_req, res) => {
   });
 });
 
+// Google Search Console verification endpoint
+app.get("/google8e5cf9f81fe54f06.html", (_req, res) => {
+  res.type("text/html").send("google-site-verification: google8e5cf9f81fe54f06.html");
+});
+
 // Vite middleware in dev or static files in production
 if (process.env.NODE_ENV !== "production") {
   const { createServer: createViteServer } = await import("vite");
