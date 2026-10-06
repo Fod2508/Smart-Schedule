@@ -33,8 +33,49 @@ provider.setCustomParameters({
 
 // Flag to indicate if we are in the middle of a sign-in flow.
 let isSigningIn = false;
-// Cache the access token IN MEMORY ONLY (Strictly no localStorage/sessionStorage for OAuth tokens)
+
+// Persist the access token so users don't have to log in on every page reload
+const TOKEN_STORAGE_KEY = "smart_schedule_google_access_token";
+const TOKEN_EXPIRY_KEY = "smart_schedule_google_token_expiry";
 let cachedAccessToken: string | null = null;
+
+export function saveCachedToken(token: string, expiresInSeconds: number = 3600) {
+  cachedAccessToken = token;
+  const expiry = Date.now() + (expiresInSeconds - 60) * 1000;
+  try {
+    sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+    sessionStorage.setItem(TOKEN_EXPIRY_KEY, String(expiry));
+    localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    localStorage.setItem(TOKEN_EXPIRY_KEY, String(expiry));
+  } catch (e) {}
+}
+
+export function loadCachedToken(): string | null {
+  if (cachedAccessToken) return cachedAccessToken;
+  try {
+    const token =
+      sessionStorage.getItem(TOKEN_STORAGE_KEY) ||
+      localStorage.getItem(TOKEN_STORAGE_KEY);
+    const expiry =
+      sessionStorage.getItem(TOKEN_EXPIRY_KEY) ||
+      localStorage.getItem(TOKEN_EXPIRY_KEY);
+    if (token && expiry && Date.now() < Number(expiry)) {
+      cachedAccessToken = token;
+      return token;
+    }
+  } catch (e) {}
+  return null;
+}
+
+export function clearCachedToken() {
+  cachedAccessToken = null;
+  try {
+    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    sessionStorage.removeItem(TOKEN_EXPIRY_KEY);
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(TOKEN_EXPIRY_KEY);
+  } catch (e) {}
+}
 
 // Initialize auth state listener. Call this on app load.
 export const initAuth = (
@@ -43,14 +84,16 @@ export const initAuth = (
 ) => {
   return onAuthStateChanged(auth, async (user: User | null) => {
     if (user) {
-      if (cachedAccessToken) {
-        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
+      const token = loadCachedToken();
+      if (token) {
+        cachedAccessToken = token;
+        if (onAuthSuccess) onAuthSuccess(user, token);
       } else if (!isSigningIn) {
-        // User is logged into Firebase Auth, but in-memory access token might need fresh sign-in to interact with Google Workspace APIs
+        // User is logged into Firebase Auth, token expired or needs fresh sign-in
         if (onAuthSuccess) onAuthSuccess(user, null);
       }
     } else {
-      cachedAccessToken = null;
+      clearCachedToken();
       if (onAuthFailure) onAuthFailure();
     }
   });
@@ -70,6 +113,7 @@ export const googleSignIn = async (): Promise<{
     }
 
     cachedAccessToken = credential.accessToken;
+    saveCachedToken(credential.accessToken);
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
     console.error("Sign in error:", error);
@@ -97,10 +141,10 @@ export const googleSignIn = async (): Promise<{
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
-  return cachedAccessToken;
+  return loadCachedToken();
 };
 
 export const logout = async () => {
   await signOut(auth);
-  cachedAccessToken = null;
+  clearCachedToken();
 };

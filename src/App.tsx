@@ -248,6 +248,8 @@ export default function App() {
         setUser(firebaseUser);
         if (token) {
           setAccessToken(token);
+          loadRemoteCalendars(token);
+          loadRemoteTasks(token);
           setUserProfile((prev) => ({
             ...prev,
             email: firebaseUser.email || "",
