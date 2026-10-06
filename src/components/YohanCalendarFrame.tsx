@@ -1,7 +1,14 @@
 import React, { useState } from "react";
 import confetti from "canvas-confetti";
 
-export const YohanCalendarFrame: React.FC = () => {
+interface YohanCalendarFrameProps {
+  zoomLevel?: "compact" | "normal" | "spacious";
+}
+
+export const YohanCalendarFrame: React.FC<YohanCalendarFrameProps> = ({
+  zoomLevel = "normal",
+}) => {
+  const isCompact = zoomLevel === "compact";
   // Speech quotes index states
   const [readingIdx, setReadingIdx] = useState(0);
   const [megaphoneIdx, setMegaphoneIdx] = useState(0);
@@ -80,7 +87,11 @@ export const YohanCalendarFrame: React.FC = () => {
   };
 
   return (
-    <div className="absolute inset-0 pointer-events-none select-none z-20 overflow-visible">
+    <div
+      className={`absolute inset-0 pointer-events-none select-none z-20 overflow-visible transition-all duration-300 ${
+        isCompact ? "scale-[0.88] origin-center" : ""
+      }`}
+    >
       {/* 1. TOP HEADER: Chic Cafe Washi Tape "LỊCH TRÌNH GO YOHAN ☕" */}
       <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
         <div

@@ -1,7 +1,14 @@
 import React, { useState } from "react";
 import confetti from "canvas-confetti";
 
-export const CuteCalendarFrame: React.FC = () => {
+interface CuteCalendarFrameProps {
+  zoomLevel?: "compact" | "normal" | "spacious";
+}
+
+export const CuteCalendarFrame: React.FC<CuteCalendarFrameProps> = ({
+  zoomLevel = "normal",
+}) => {
+  const isCompact = zoomLevel === "compact";
   // Interactive speech bubble states
   const [topLeftIdx, setTopLeftIdx] = useState(0);
   const [topRightIdx, setTopRightIdx] = useState(0);
@@ -64,7 +71,11 @@ export const CuteCalendarFrame: React.FC = () => {
   };
 
   return (
-    <div className="absolute inset-0 pointer-events-none select-none z-20 overflow-visible">
+    <div
+      className={`absolute inset-0 pointer-events-none select-none z-20 overflow-visible transition-all duration-300 ${
+        isCompact ? "scale-[0.88] origin-center" : ""
+      }`}
+    >
       {/* 1. TOP WASHI TAPE - Như tờ lịch/sổ tay dán trên bàn */}
       <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
         <div

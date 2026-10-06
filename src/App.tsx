@@ -1305,6 +1305,7 @@ export default function App() {
                 setSelectedEvent({
                   startTime: startISO,
                   endTime: endISO,
+                  isSyncedToGoogle: true,
                 });
                 setIsEventModalOpen(true);
               }}

@@ -1,7 +1,14 @@
 import React, { useState } from "react";
 import confetti from "canvas-confetti";
 
-export const CapybaraCalendarFrame: React.FC = () => {
+interface CapybaraCalendarFrameProps {
+  zoomLevel?: "compact" | "normal" | "spacious";
+}
+
+export const CapybaraCalendarFrame: React.FC<CapybaraCalendarFrameProps> = ({
+  zoomLevel = "normal",
+}) => {
+  const isCompact = zoomLevel === "compact";
   // Speech bubble index states
   const [topLeftIdx, setTopLeftIdx] = useState(0);
   const [topRightIdx, setTopRightIdx] = useState(0);
@@ -55,7 +62,11 @@ export const CapybaraCalendarFrame: React.FC = () => {
   };
 
   return (
-    <div className="absolute inset-0 pointer-events-none select-none z-20 overflow-visible">
+    <div
+      className={`absolute inset-0 pointer-events-none select-none z-20 overflow-visible transition-all duration-300 ${
+        isCompact ? "scale-[0.88] origin-center" : ""
+      }`}
+    >
       {/* 1. TOP CENTER: Bubbly Marshmallow "THỜI KHÓA BIỂU" Header Banner */}
       <div className="absolute -top-6 sm:-top-8 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
         <div className="flex flex-col items-center">

@@ -26,11 +26,17 @@ import {
   Briefcase,
   Users,
   Heart,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { ScheduleItem, ConflictItem, Chronotype, UiTheme } from "../types/schedule";
 import { CuteCalendarFrame } from "./CuteCalendarFrame";
 import { CapybaraCalendarFrame } from "./CapybaraCalendarFrame";
 import { YohanCalendarFrame } from "./YohanCalendarFrame";
+
+export type ZoomDensity = "compact" | "normal" | "spacious";
 
 interface CalendarGridProps {
   currentDate: Date;
@@ -89,6 +95,30 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
     const timer = setInterval(() => setCurrentTime(new Date()), 30000);
     return () => clearInterval(timer);
   }, []);
+
+  // Zoom Density state (compact: fits in 1 screen, normal: balanced, spacious: roomy)
+  const [zoomLevel, setZoomLevel] = useState<ZoomDensity>(() => {
+    return (
+      (localStorage.getItem("smart_schedule_zoom_level") as ZoomDensity) ||
+      "normal"
+    );
+  });
+  const handleSetZoomLevel = (lvl: ZoomDensity) => {
+    setZoomLevel(lvl);
+    localStorage.setItem("smart_schedule_zoom_level", lvl);
+  };
+
+  // Fullscreen state
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isFullscreen]);
 
   // Drag and Drop state
   const [draggingEventId, setDraggingEventId] = useState<string | null>(null);
@@ -390,14 +420,26 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
   });
 
   return (
-    <div className={`relative ${uiTheme === "cute" || uiTheme === "capybara" || uiTheme === "yohan" ? "pt-7 pb-8 px-1 sm:px-2" : ""}`}>
+    <div
+      className={
+        isFullscreen
+          ? "fixed inset-0 z-50 p-2 sm:p-5 bg-zinc-950/85 backdrop-blur-md overflow-y-auto flex flex-col justify-start"
+          : `relative ${
+              uiTheme === "cute" || uiTheme === "capybara" || uiTheme === "yohan"
+                ? zoomLevel === "compact"
+                  ? "pt-5 pb-6 px-1 sm:px-2"
+                  : "pt-7 pb-8 px-1 sm:px-2"
+                : ""
+            }`
+      }
+    >
       {/* Cute Peeking Characters & Frame Decors (Bears, Rainbow, Washi Tape, Mascot) */}
-      {uiTheme === "cute" && <CuteCalendarFrame />}
-      {uiTheme === "capybara" && <CapybaraCalendarFrame />}
-      {uiTheme === "yohan" && <YohanCalendarFrame />}
+      {uiTheme === "cute" && <CuteCalendarFrame zoomLevel={zoomLevel} />}
+      {uiTheme === "capybara" && <CapybaraCalendarFrame zoomLevel={zoomLevel} />}
+      {uiTheme === "yohan" && <YohanCalendarFrame zoomLevel={zoomLevel} />}
 
       <div
-        className={`relative z-10 ${
+        className={`relative z-10 ${isFullscreen ? "max-w-7xl mx-auto w-full my-auto" : ""} ${
           uiTheme === "yohan"
             ? "bg-[#FAF9F6]/95 dark:bg-[#18181B]/95 backdrop-blur-xl rounded-3xl shadow-xl border-2 border-zinc-900/80 dark:border-zinc-700/80"
             : uiTheme === "capybara"
@@ -490,6 +532,69 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
               );
             })}
           </div>
+
+          {/* Zoom Density Selector */}
+          <div className="flex items-center p-1 bg-zinc-100 dark:bg-zinc-800/90 rounded-xl text-xs gap-0.5">
+            <button
+              type="button"
+              onClick={() => handleSetZoomLevel("compact")}
+              title="Thu nhỏ (Gọn vừa khít màn hình, không cần cuộn)"
+              className={`px-2 py-1 rounded-lg font-medium transition-all cursor-pointer flex items-center gap-1 ${
+                zoomLevel === "compact"
+                  ? "bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-300 font-bold shadow-xs scale-102"
+                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+              }`}
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Gọn</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSetZoomLevel("normal")}
+              title="Kích thước tiêu chuẩn (100%)"
+              className={`px-2 py-1 rounded-lg font-medium transition-all cursor-pointer flex items-center gap-1 ${
+                zoomLevel === "normal"
+                  ? "bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-300 font-bold shadow-xs scale-102"
+                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+              }`}
+            >
+              <span className="hidden sm:inline">Vừa</span>
+              <span className="sm:hidden text-[10px]">100%</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSetZoomLevel("spacious")}
+              title="Phóng to (Chi tiết rộng rãi)"
+              className={`px-2 py-1 rounded-lg font-medium transition-all cursor-pointer flex items-center gap-1 ${
+                zoomLevel === "spacious"
+                  ? "bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-300 font-bold shadow-xs scale-102"
+                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+              }`}
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Rộng</span>
+            </button>
+          </div>
+
+          {/* Fullscreen Button */}
+          <button
+            type="button"
+            onClick={() => setIsFullscreen((prev) => !prev)}
+            title={
+              isFullscreen
+                ? "Thu nhỏ về giao diện thường (Esc)"
+                : "Phóng to toàn màn hình"
+            }
+            className="p-1.5 rounded-xl text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-200/80 dark:border-zinc-700/80 transition cursor-pointer"
+          >
+            {isFullscreen ? (
+              <Minimize2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            ) : (
+              <Maximize2 className="w-4 h-4" />
+            )}
+          </button>
         </div>
       </div>
 
@@ -868,8 +973,22 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
           >
             <div className="min-w-[850px]">
             {/* Days Header */}
-            <div className="grid grid-cols-[70px_repeat(7,_1fr)] border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-800/40">
-              <div className="p-3 text-center text-xs font-semibold text-zinc-400 border-r border-zinc-200/80 dark:border-zinc-800">
+            <div
+              className={`grid ${
+                viewMode === "day"
+                  ? zoomLevel === "compact"
+                    ? "grid-cols-[56px_1fr]"
+                    : "grid-cols-[70px_1fr]"
+                  : zoomLevel === "compact"
+                    ? "grid-cols-[56px_repeat(7,_1fr)]"
+                    : "grid-cols-[70px_repeat(7,_1fr)]"
+              } border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-800/40`}
+            >
+              <div
+                className={`${
+                  zoomLevel === "compact" ? "p-1.5" : "p-3"
+                } text-center text-xs font-semibold text-zinc-400 border-r border-zinc-200/80 dark:border-zinc-800 flex items-center justify-center`}
+              >
                 Giờ
               </div>
               {(viewMode === "day" ? [currentDate] : weekDays).map(
@@ -884,7 +1003,9 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
                   return (
                     <div
                       key={idx}
-                      className={`p-3 text-center border-r border-zinc-200/80 dark:border-zinc-800 last:border-r-0 ${
+                      className={`${
+                        zoomLevel === "compact" ? "p-1.5" : "p-3"
+                      } text-center border-r border-zinc-200/80 dark:border-zinc-800 last:border-r-0 ${
                         dayIsToday
                           ? "bg-indigo-50/50 dark:bg-indigo-950/30"
                           : ""
@@ -895,7 +1016,9 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
                       </div>
                       <div className="flex items-center justify-center gap-1 mt-0.5">
                         <div
-                          className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${
+                          className={`inline-flex items-center justify-center ${
+                            zoomLevel === "compact" ? "w-6 h-6 text-[11px]" : "w-7 h-7 text-xs"
+                          } rounded-full font-bold ${
                             dayIsToday
                               ? "bg-indigo-600 text-white shadow-xs"
                               : "text-zinc-800 dark:text-zinc-200"
@@ -929,21 +1052,43 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
             </div>
 
             {/* Time Grid body */}
-            <div className="relative max-h-[620px] overflow-y-auto">
+            <div
+              className={`relative ${
+                isFullscreen
+                  ? "max-h-[calc(100vh-210px)] overflow-y-auto"
+                  : zoomLevel === "compact"
+                    ? "max-h-none overflow-visible"
+                    : zoomLevel === "spacious"
+                      ? "max-h-[780px] overflow-y-auto"
+                      : "max-h-[620px] overflow-y-auto"
+              }`}
+            >
               {hours.map((hour) => {
                 const hourFormatted = `${hour.toString().padStart(2, "0")}:00`;
                 const displayDays =
                   viewMode === "day" ? [currentDate] : weekDays;
                 const energyZone = getHourEnergyZone(hour, chronotype);
 
+                const rowMinHeight =
+                  zoomLevel === "compact"
+                    ? "min-h-[38px]"
+                    : zoomLevel === "spacious"
+                      ? "min-h-[72px]"
+                      : "min-h-[54px]";
+
+                const gridColsClass =
+                  viewMode === "day"
+                    ? zoomLevel === "compact"
+                      ? "grid-cols-[56px_1fr]"
+                      : "grid-cols-[70px_1fr]"
+                    : zoomLevel === "compact"
+                      ? "grid-cols-[56px_repeat(7,_1fr)]"
+                      : "grid-cols-[70px_repeat(7,_1fr)]";
+
                 return (
                   <div
                     key={hour}
-                    className={`grid ${
-                      viewMode === "day"
-                        ? "grid-cols-[70px_1fr]"
-                        : "grid-cols-[70px_repeat(7,_1fr)]"
-                    } min-h-[58px] border-b border-zinc-100 dark:border-zinc-800/60 transition-colors ${
+                    className={`grid ${gridColsClass} ${rowMinHeight} border-b border-zinc-100 dark:border-zinc-800/60 transition-colors ${
                       showEnergyOverlay && energyZone.bgClass
                         ? `${energyZone.bgClass} ${energyZone.borderClass}`
                         : ""
@@ -951,7 +1096,13 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
                   >
                     {/* Time slot label */}
                     <div
-                      className={`p-2 text-right pr-3 text-[11px] font-medium border-r border-zinc-200/80 dark:border-zinc-800 flex flex-col justify-between transition-all ${
+                      className={`${
+                        zoomLevel === "compact"
+                          ? "p-1 pr-1.5 text-[10px]"
+                          : zoomLevel === "spacious"
+                            ? "p-2.5 pr-3 text-xs"
+                            : "p-2 pr-3 text-[11px]"
+                      } text-right font-medium border-r border-zinc-200/80 dark:border-zinc-800 flex flex-col justify-between transition-all ${
                         showEnergyOverlay && energyZone.textClass
                           ? energyZone.textClass
                           : "text-zinc-400 dark:text-zinc-500"
@@ -1077,8 +1228,10 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
                           )}
 
                           {/* Events inside this slot */}
-                          <div className="space-y-1 w-full min-w-0">
+                          <div className={`${zoomLevel === "compact" ? "space-y-0.5" : "space-y-1"} w-full min-w-0`}>
                             {slotEvents.map((ev) => {
+                              const isCompact = zoomLevel === "compact";
+                              const isSpacious = zoomLevel === "spacious";
                               const style =
                                 categoryStyles[ev.category] ||
                                 categoryStyles.personal;
@@ -1116,7 +1269,13 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
                                       e.stopPropagation();
                                       onSelectEvent(ev);
                                     }}
-                                    className={`p-1.5 rounded-2xl border border-dashed border-amber-400 dark:border-amber-600 bg-amber-50/90 dark:bg-amber-950/60 text-amber-950 dark:text-amber-100 text-xs shadow-2xs transition-all hover:scale-[1.02] cursor-grab active:cursor-grabbing squishy-pop ${
+                                    className={`${
+                                      isCompact
+                                        ? "p-1 rounded-xl text-[10px]"
+                                        : isSpacious
+                                          ? "p-2 rounded-2xl text-xs"
+                                          : "p-1.5 rounded-2xl text-xs"
+                                    } border border-dashed border-amber-400 dark:border-amber-600 bg-amber-50/90 dark:bg-amber-950/60 text-amber-950 dark:text-amber-100 shadow-2xs transition-all hover:scale-[1.02] cursor-grab active:cursor-grabbing squishy-pop ${
                                       draggingEventId === ev.id ? "opacity-30 scale-95" : ""
                                     }`}
                                     title={
@@ -1130,20 +1289,22 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
                                           <img
                                             src="/illustrations/badge_travel.jpg"
                                             alt="travel"
-                                            className="w-5.5 h-5.5 rounded-lg object-cover shadow-2xs border border-white/80 dark:border-zinc-700/80 shrink-0"
+                                            className={`${
+                                              isCompact ? "w-4 h-4 rounded-md" : "w-5.5 h-5.5 rounded-lg"
+                                            } object-cover shadow-2xs border border-white/80 dark:border-zinc-700/80 shrink-0`}
                                           />
                                         ) : (
-                                          <Navigation className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                                          <Navigation className={`${isCompact ? "w-3 h-3" : "w-3.5 h-3.5"} text-amber-600 dark:text-amber-400 shrink-0`} />
                                         )}
-                                        <span className="truncate">
+                                        <span className={`truncate ${isCompact ? "text-[10px]" : "text-[11px]"}`}>
                                           {ev.title}
                                         </span>
                                       </div>
-                                      <span className="text-[9px] px-1 py-0.2 rounded-full bg-amber-200/90 dark:bg-amber-900/90 font-bold shrink-0 text-amber-900 dark:text-amber-200">
+                                      <span className="text-[8px] sm:text-[9px] px-1 py-0.2 rounded-full bg-amber-200/90 dark:bg-amber-900/90 font-bold shrink-0 text-amber-900 dark:text-amber-200">
                                         {ev.bufferMinutes || 25}p
                                       </span>
                                     </div>
-                                    <div className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 flex items-center justify-between">
+                                    <div className={`${isCompact ? "text-[8px]" : "text-[10px]"} text-zinc-500 dark:text-zinc-400 mt-0.5 flex items-center justify-between`}>
                                       <span>{timeLabel}</span>
                                       {ev.travelDestination && (
                                         <span className="truncate max-w-[85px] text-amber-700 dark:text-amber-300 font-medium">
@@ -1176,7 +1337,13 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
                                   }}
                                   onMouseEnter={(e) => handleMouseEnterEvent(e, ev)}
                                   onMouseLeave={handleMouseLeaveEvent}
-                                  className={`p-1.5 sm:p-2 rounded-2xl border text-xs transition-all duration-200 hover:-translate-y-1 hover:scale-[1.02] active:scale-[0.98] cursor-grab active:cursor-grabbing backdrop-blur-xs select-none squishy-pop ${
+                                  className={`${
+                                    isCompact
+                                      ? "p-1 rounded-xl text-[10px]"
+                                      : isSpacious
+                                        ? "p-2 sm:p-2.5 rounded-2xl text-xs"
+                                        : "p-1.5 sm:p-2 rounded-2xl text-xs"
+                                  } border transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.01] active:scale-[0.98] cursor-grab active:cursor-grabbing backdrop-blur-xs select-none squishy-pop ${
                                     style.shadow || "shadow-xs"
                                   } ${
                                     conflictInfo
@@ -1194,13 +1361,17 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
                                         <img
                                           src={style.iconImg}
                                           alt={ev.category}
-                                          className="w-5.5 h-5.5 rounded-lg object-cover shadow-2xs border border-white/90 dark:border-zinc-700/80 shrink-0 select-none group-hover:scale-110 transition-transform"
+                                          className={`${
+                                            isCompact ? "w-4 h-4 rounded-md" : "w-5.5 h-5.5 rounded-lg"
+                                          } object-cover shadow-2xs border border-white/90 dark:border-zinc-700/80 shrink-0 select-none group-hover:scale-110 transition-transform`}
                                         />
                                       ) : (
-                                        <style.vectorIcon className="w-3.5 h-3.5 shrink-0" />
+                                        <style.vectorIcon className={`${isCompact ? "w-3 h-3" : "w-3.5 h-3.5"} shrink-0`} />
                                       )}
                                       <span
-                                        className={`truncate ${ev.isCompleted ? "line-through opacity-70" : ""}`}
+                                        className={`truncate ${
+                                          isCompact ? "text-[10px]" : "text-[11px] sm:text-xs"
+                                        } ${ev.isCompleted ? "line-through opacity-70" : ""}`}
                                       >
                                         {ev.title}
                                       </span>
@@ -1266,16 +1437,16 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
                                     </div>
                                   </div>
 
-                                  <div className="flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">
+                                  <div className={`flex items-center justify-between ${isCompact ? "text-[8px] mt-0.5" : "text-[10px] mt-1"} text-zinc-500 dark:text-zinc-400`}>
                                     <span>{timeLabel}</span>
                                     {ev.isSyncedToGoogle && (
-                                      <span className="text-[9px] text-indigo-500">
+                                      <span className={`${isCompact ? "text-[8px]" : "text-[9px]"} text-indigo-500 font-medium`}>
                                         G-Cal
                                       </span>
                                     )}
                                   </div>
 
-                                  {ev.location && (
+                                  {ev.location && !isCompact && (
                                     <div className="mt-0.5 flex items-center gap-1 text-[9px] text-zinc-500 dark:text-zinc-400 truncate">
                                       <MapPin className="w-2.5 h-2.5 text-amber-500 shrink-0" />
                                       <span className="truncate">
