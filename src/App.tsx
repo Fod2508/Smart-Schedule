@@ -151,6 +151,10 @@ export default function App() {
   const [selectedCalendarId, setSelectedCalendarId] =
     useState<string>("primary");
   const [isSyncingCalendar, setIsSyncingCalendar] = useState(false);
+  const [syncToast, setSyncToast] = useState<{
+    message: string;
+    type: "success" | "error";
+  } | null>(null);
 
   // Google Tasks state
   const [taskLists, setTaskLists] = useState<{ id: string; title: string }[]>(
@@ -486,58 +490,122 @@ export default function App() {
 
     setIsSyncingCalendar(true);
     try {
-      // 1. Đẩy các sự kiện cục bộ được đánh dấu sync nhưng chưa có trên Google Calendar
-      const unsyncedLocals = events.filter(
-        (e) => e.isSyncedToGoogle && !e.googleEventId,
-      );
-      for (const localEv of unsyncedLocals) {
-        try {
-          const calId = localEv.googleCalendarId || selectedCalendarId;
-          const gcalRes = await createGoogleCalendarEvent(
-            accessToken,
-            calId,
-            localEv,
-            localEv.hasMeet,
-            localEv.reminderMinutes ?? 30,
-          );
-          localEv.googleEventId = gcalRes.id;
-          localEv.googleCalendarId = calId;
-          if (gcalRes.hangoutLink) localEv.meetLink = gcalRes.hangoutLink;
-        } catch (pushErr) {
-          console.warn(
-            "Failed to push unsynced event to Google Calendar:",
-            pushErr,
-          );
+      let syncedCount = 0;
+      const targetCalId = selectedCalendarId;
+
+      // 1. Đồng bộ TẤT CẢ sự kiện trong lịch trình sang Google Calendar (không cần tick từng cái)
+      const currentEvents = [...events];
+      for (const ev of currentEvents) {
+        const calId = ev.googleCalendarId || targetCalId;
+        const reminderMins =
+          ev.reminderMinutes ?? userProfile.defaultMeetReminderMinutes ?? 30;
+
+        if (!ev.googleEventId) {
+          // Chưa có trên Google Calendar -> Tạo mới ngay
+          try {
+            const gcalRes = await createGoogleCalendarEvent(
+              accessToken,
+              calId,
+              ev,
+              ev.hasMeet,
+              reminderMins,
+            );
+            ev.googleEventId = gcalRes.id;
+            ev.googleCalendarId = calId;
+            ev.isSyncedToGoogle = true;
+            if (gcalRes.hangoutLink) ev.meetLink = gcalRes.hangoutLink;
+            syncedCount++;
+          } catch (pushErr) {
+            console.warn(
+              "Failed to push unsynced event to Google Calendar:",
+              pushErr,
+            );
+          }
+        } else {
+          // Đã có trên Google Calendar -> Cập nhật để đồng bộ nội dung mới nhất
+          try {
+            await updateGoogleCalendarEvent(
+              accessToken,
+              calId,
+              ev.googleEventId,
+              ev,
+              reminderMins,
+            );
+            ev.isSyncedToGoogle = true;
+            syncedCount++;
+          } catch (updateErr) {
+            console.warn("Failed to update event on Google Calendar:", updateErr);
+          }
         }
       }
 
-      // 2. Tải danh sách sự kiện từ Google Calendar cho tuần hiện tại
-      const monday = new Date(currentDate);
-      const day = monday.getDay();
-      const diff = monday.getDate() - day + (day === 0 ? -6 : 1);
-      monday.setDate(diff);
-      monday.setHours(0, 0, 0, 0);
+      // 2. Tải danh sách sự kiện từ Google Calendar (+- 35 ngày quanh ngày hiện tại)
+      const rangeStart = new Date(currentDate);
+      rangeStart.setDate(rangeStart.getDate() - 35);
+      rangeStart.setHours(0, 0, 0, 0);
 
-      const sunday = new Date(monday);
-      sunday.setDate(monday.getDate() + 7);
-      sunday.setHours(23, 59, 59, 999);
+      const rangeEnd = new Date(currentDate);
+      rangeEnd.setDate(rangeEnd.getDate() + 45);
+      rangeEnd.setHours(23, 59, 59, 999);
 
-      const remoteEvents = await listCalendarEvents(
-        accessToken,
-        selectedCalendarId,
-        monday.toISOString(),
-        sunday.toISOString(),
+      let remoteEvents: ScheduleItem[] = [];
+      try {
+        remoteEvents = await listCalendarEvents(
+          accessToken,
+          targetCalId,
+          rangeStart.toISOString(),
+          rangeEnd.toISOString(),
+        );
+      } catch (listErr) {
+        console.warn("Failed to fetch remote events from Google Calendar:", listErr);
+      }
+
+      // 3. Hợp nhất 2 chiều thông minh: không mất sự kiện local, nạp sự kiện mới từ Google
+      const remoteByGId = new Map(
+        remoteEvents.map((r) => [r.googleEventId, r]),
       );
 
-      // 3. Hợp nhất: Giữ lại sự kiện thuần cục bộ (!googleEventId) và nạp toàn bộ sự kiện mới nhất từ Google
-      setEvents((prev) => {
-        const localOnly = prev.filter((e) => !e.googleEventId);
-        const merged = [...localOnly, ...remoteEvents];
-        saveLocalSchedule(merged);
-        return merged;
+      const mergedLocals = currentEvents.map((local) => {
+        if (local.googleEventId && remoteByGId.has(local.googleEventId)) {
+          const remote = remoteByGId.get(local.googleEventId)!;
+          remoteByGId.delete(local.googleEventId);
+          return {
+            ...local,
+            title: remote.title || local.title,
+            startTime: remote.startTime || local.startTime,
+            endTime: remote.endTime || local.endTime,
+            description: remote.description || local.description,
+            meetLink: remote.meetLink || local.meetLink,
+            hasMeet: remote.hasMeet || local.hasMeet,
+            location: remote.location || local.location,
+            isSyncedToGoogle: true,
+          };
+        }
+        return {
+          ...local,
+          isSyncedToGoogle: true,
+        };
       });
+
+      // Bổ sung các sự kiện mới chỉ có trên Google Calendar
+      const brandNewRemotes = Array.from(remoteByGId.values());
+      const finalEvents = [...mergedLocals, ...brandNewRemotes];
+
+      setEvents(finalEvents);
+      saveLocalSchedule(finalEvents);
+
+      setSyncToast({
+        message: `Đã đồng bộ tất cả thành công (${finalEvents.length} sự kiện)!`,
+        type: "success",
+      });
+      setTimeout(() => setSyncToast(null), 4000);
     } catch (e: any) {
       console.error("Failed to sync Google calendar:", e);
+      setSyncToast({
+        message: `Đồng bộ thất bại: ${e.message || "Vui lòng kiểm tra kết nối"}`,
+        type: "error",
+      });
+      setTimeout(() => setSyncToast(null), 5000);
     } finally {
       setIsSyncingCalendar(false);
     }
@@ -627,6 +695,7 @@ export default function App() {
       priority: "high",
       pomodoroBlocks: 2,
       source: "google_tasks",
+      isSyncedToGoogle: true,
     };
 
     setEvents((prev) => [...prev, newEvent]);
@@ -659,7 +728,7 @@ export default function App() {
       hasMeet: eventData.hasMeet,
       meetLink: eventData.meetLink,
       pomodoroBlocks: eventData.pomodoroBlocks || 1,
-      isSyncedToGoogle: eventData.isSyncedToGoogle,
+      isSyncedToGoogle: eventData.isSyncedToGoogle !== false,
       source: eventData.source || existing?.source || "local",
       bufferMinutes: eventData.bufferMinutes,
       transitMode: eventData.transitMode,
@@ -763,88 +832,6 @@ export default function App() {
 
     setIsEventModalOpen(false);
     setSelectedEvent(null);
-  };
-
-  // Nạp lịch mẫu đầy đủ danh mục để trải nghiệm huy hiệu 3D
-  const handleLoadSampleSchedule = () => {
-    const today = new Date();
-    const y = today.getFullYear();
-    const m = String(today.getMonth() + 1).padStart(2, "0");
-    const d = String(today.getDate()).padStart(2, "0");
-    const baseDate = `${y}-${m}-${d}`;
-
-    const samples: ScheduleItem[] = [
-      {
-        id: `sample-study-${Date.now()}`,
-        title: "Toán Giải Tích 2 & Ôn tập thi",
-        startTime: `${baseDate}T08:30:00`,
-        endTime: `${baseDate}T10:00:00`,
-        category: "study",
-        priority: "high",
-        energyLevel: "peak_focus",
-        location: "Thư viện Đại Học",
-        description: "Học chương 4 Giải tích và làm bài tập mẫu",
-      },
-      {
-        id: `sample-break-${Date.now()}`,
-        title: "Uống trà sữa & Thư giãn nghe nhạc",
-        startTime: `${baseDate}T10:15:00`,
-        endTime: `${baseDate}T11:00:00`,
-        category: "break",
-        priority: "low",
-        energyLevel: "recovery",
-        description: "Thư giãn nạp năng lượng sau ca học căng thẳng",
-      },
-      {
-        id: `sample-work-${Date.now()}`,
-        title: "Lập trình React & Thiết kế UI 3D",
-        startTime: `${baseDate}T13:30:00`,
-        endTime: `${baseDate}T15:30:00`,
-        category: "work",
-        priority: "high",
-        energyLevel: "peak_focus",
-        location: "Phòng nghiên cứu Lab",
-        description: "Hoàn thiện animation và các khối nút 3D",
-      },
-      {
-        id: `sample-travel-${Date.now()}`,
-        title: "Di chuyển đến quán cà phê họp nhóm",
-        startTime: `${baseDate}T15:30:00`,
-        endTime: `${baseDate}T16:00:00`,
-        category: "break",
-        priority: "medium",
-        isTravelBuffer: true,
-        bufferMinutes: 30,
-        transitMode: "motorcycle",
-        location: "The Coffee House",
-        description: "Thời gian di chuyển đệm tránh kẹt xe",
-      },
-      {
-        id: `sample-meeting-${Date.now()}`,
-        title: "Họp Sprint Review & Kế hoạch tuần",
-        startTime: `${baseDate}T16:00:00`,
-        endTime: `${baseDate}T17:15:00`,
-        category: "meeting",
-        priority: "medium",
-        energyLevel: "light_admin",
-        hasMeet: true,
-        location: "Google Meet",
-        description: "Báo cáo tiến độ và demo sản phẩm",
-      },
-      {
-        id: `sample-personal-${Date.now()}`,
-        title: "Đọc sách & Lên kế hoạch cá nhân",
-        startTime: `${baseDate}T19:30:00`,
-        endTime: `${baseDate}T21:00:00`,
-        category: "personal",
-        priority: "low",
-        energyLevel: "recovery",
-        description: "Đọc 30 trang sách Atomic Habits và ghi chú",
-      },
-    ];
-
-    setEvents(samples);
-    saveLocalSchedule(samples);
   };
 
   const handleDeleteEvent = (eventId: string) => {
@@ -1208,6 +1195,25 @@ export default function App() {
         </div>
       )}
 
+      {/* Sync toast notification */}
+      {syncToast && (
+        <div
+          className={`fixed top-4 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 px-4 py-3 text-xs font-semibold rounded-2xl shadow-xl animate-in slide-in-from-top-2 duration-200 ${
+            syncToast.type === "success"
+              ? "bg-emerald-600 text-white"
+              : "bg-rose-600 text-white"
+          }`}
+        >
+          <span>{syncToast.message}</span>
+          <button
+            onClick={() => setSyncToast(null)}
+            className="text-white/80 hover:text-white text-sm font-bold cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Cảnh báo Firebase chưa cấu hình */}
       {!user &&
         !isLoggingIn &&
@@ -1324,7 +1330,6 @@ export default function App() {
                 setIsRescheduleOpen(true);
               }}
               onUpdateEventTimes={handleUpdateEventTimes}
-              onLoadSampleSchedule={handleLoadSampleSchedule}
             />
           </div>
 
@@ -1347,7 +1352,6 @@ export default function App() {
                 setIsRescheduleOpen(true);
               }}
               onOpenTravelBuffer={() => setIsTravelBufferOpen(true)}
-              onLoadSampleSchedule={handleLoadSampleSchedule}
             />
 
             {/* Quick Actions Card — gọn */}

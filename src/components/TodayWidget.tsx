@@ -7,7 +7,6 @@ import {
   CheckCircle,
   Play,
   ExternalLink,
-  Sparkles,
   FastForward,
   Car,
   CheckCircle2,
@@ -27,7 +26,6 @@ interface TodayWidgetProps {
   onToggleComplete: (eventId: string) => void;
   onOpenReschedule?: (eventId?: string) => void;
   onOpenTravelBuffer?: () => void;
-  onLoadSampleSchedule?: () => void;
   uiTheme?: UiTheme;
 }
 
@@ -38,7 +36,6 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
   onToggleComplete,
   onOpenReschedule,
   onOpenTravelBuffer,
-  onLoadSampleSchedule,
   uiTheme = "cute",
 }) => {
   const getCategoryVectorIcon = (category: string) => {
@@ -250,16 +247,6 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
                   ? "Không còn lịch nào cả, nhâm nhi ly trà sữa và nghỉ ngơi bạn nha~ ✨"
                   : "Tất cả các công việc trong ngày đã hoàn thành hoặc chưa có lịch mới."}
             </div>
-            {onLoadSampleSchedule && (
-              <button
-                type="button"
-                onClick={onLoadSampleSchedule}
-                className="mt-2 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold text-xs shadow-xs hover:scale-105 active:scale-95 transition-all cursor-pointer"
-              >
-                <Sparkles className="w-3.5 h-3.5 animate-star-twinkle" />
-                <span>Nạp lịch mẫu hôm nay</span>
-              </button>
-            )}
           </div>
         )}
 

@@ -57,7 +57,6 @@ interface CalendarGridProps {
     newStartTime: string,
     newEndTime: string,
   ) => void;
-  onLoadSampleSchedule?: () => void;
   uiTheme?: UiTheme;
 }
 
@@ -82,7 +81,6 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
   onOpenPomodoroForEvent,
   onOpenRescheduleForEvent,
   onUpdateEventTimes,
-  onLoadSampleSchedule,
   uiTheme = "cute",
 }) => {
   // Realtime clock for Current Time Indicator
@@ -543,16 +541,23 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
           })}
         </div>
 
-        {onLoadSampleSchedule && (
+        {onSyncGoogleCalendar && (
           <button
             type="button"
-            onClick={onLoadSampleSchedule}
-            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold text-xs shadow-xs hover:scale-105 active:scale-95 transition-all cursor-pointer"
-            title="Nạp lịch mẫu đầy đủ các hoạt động học tập, công việc, cà phê, họp nhóm"
+            onClick={onSyncGoogleCalendar}
+            disabled={isSyncing}
+            className="shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-bold text-xs shadow-xs hover:scale-105 active:scale-95 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            title="Đồng bộ tất cả sự kiện trong lịch sang Google Calendar"
           >
-            <Sparkles className="w-3.5 h-3.5 animate-star-twinkle" />
-            <span className="hidden md:inline">Nạp lịch mẫu trải nghiệm</span>
-            <span className="md:hidden">Lịch mẫu</span>
+            <RotateCw
+              className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`}
+            />
+            <span className="hidden sm:inline">
+              {isSyncing ? "Đang đồng bộ..." : "Đồng bộ tất cả qua Calendar"}
+            </span>
+            <span className="sm:hidden">
+              {isSyncing ? "Đang sync..." : "Đồng bộ Calendar"}
+            </span>
           </button>
         )}
       </div>
@@ -633,16 +638,17 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
                     : `Không có sự kiện nào thuộc mục "${categoryFilters.find((c) => c.id === selectedCategoryFilter)?.label}"`}
                 </p>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-sm mx-auto">
-                  Bấm vào khung giờ để thêm hoặc nhấn nút bên dưới để tạo lịch mẫu trải nghiệm ngay!
+                  Bấm vào khung giờ để thêm sự kiện hoặc nhấn nút bên dưới để đồng bộ tất cả với Google Calendar!
                 </p>
-                {onLoadSampleSchedule && (
+                {onSyncGoogleCalendar && (
                   <button
                     type="button"
-                    onClick={onLoadSampleSchedule}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold text-xs shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                    onClick={onSyncGoogleCalendar}
+                    disabled={isSyncing}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer disabled:opacity-60"
                   >
-                    <Sparkles className="w-4 h-4 animate-star-twinkle" />
-                    <span>Nạp lịch mẫu đầy đủ hoạt động</span>
+                    <RotateCw className={`w-4 h-4 ${isSyncing ? "animate-spin" : ""}`} />
+                    <span>{isSyncing ? "Đang đồng bộ..." : "Đồng bộ tất cả qua Google Calendar"}</span>
                   </button>
                 )}
               </div>
