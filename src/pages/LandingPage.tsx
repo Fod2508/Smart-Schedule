@@ -308,6 +308,12 @@ export const LandingPage: React.FC = () => {
               Hướng dẫn
             </button>
             <button
+              onClick={() => navigate("/privacy")}
+              className="hover:text-zinc-600 dark:hover:text-zinc-300 transition"
+            >
+              Chính sách riêng tư
+            </button>
+            <button
               onClick={() => navigate("/app")}
               className="hover:text-zinc-600 dark:hover:text-zinc-300 transition"
             >
