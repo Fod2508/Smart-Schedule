@@ -484,7 +484,32 @@ export default function App() {
 
     setIsSyncingCalendar(true);
     try {
-      // Get current week window
+      // 1. Đẩy các sự kiện cục bộ được đánh dấu sync nhưng chưa có trên Google Calendar
+      const unsyncedLocals = events.filter(
+        (e) => e.isSyncedToGoogle && !e.googleEventId,
+      );
+      for (const localEv of unsyncedLocals) {
+        try {
+          const calId = localEv.googleCalendarId || selectedCalendarId;
+          const gcalRes = await createGoogleCalendarEvent(
+            accessToken,
+            calId,
+            localEv,
+            localEv.hasMeet,
+            localEv.reminderMinutes ?? 30,
+          );
+          localEv.googleEventId = gcalRes.id;
+          localEv.googleCalendarId = calId;
+          if (gcalRes.hangoutLink) localEv.meetLink = gcalRes.hangoutLink;
+        } catch (pushErr) {
+          console.warn(
+            "Failed to push unsynced event to Google Calendar:",
+            pushErr,
+          );
+        }
+      }
+
+      // 2. Tải danh sách sự kiện từ Google Calendar cho tuần hiện tại
       const monday = new Date(currentDate);
       const day = monday.getDay();
       const diff = monday.getDate() - day + (day === 0 ? -6 : 1);
@@ -502,10 +527,12 @@ export default function App() {
         sunday.toISOString(),
       );
 
-      // Merge remote events with local non-synced events
+      // 3. Hợp nhất: Giữ lại sự kiện thuần cục bộ (!googleEventId) và nạp toàn bộ sự kiện mới nhất từ Google
       setEvents((prev) => {
         const localOnly = prev.filter((e) => !e.googleEventId);
-        return [...localOnly, ...remoteEvents];
+        const merged = [...localOnly, ...remoteEvents];
+        saveLocalSchedule(merged);
+        return merged;
       });
     } catch (e: any) {
       console.error("Failed to sync Google calendar:", e);
@@ -608,6 +635,15 @@ export default function App() {
   const handleSaveEvent = async (eventData: Partial<ScheduleItem>) => {
     const isNew = !eventData.id;
     const eventId = eventData.id || `evt-${Date.now()}`;
+    const existing = eventData.id
+      ? events.find((e) => e.id === eventData.id)
+      : undefined;
+    const googleEventId = eventData.googleEventId || existing?.googleEventId;
+    const googleCalendarId =
+      eventData.googleCalendarId ||
+      existing?.googleCalendarId ||
+      selectedCalendarId;
+
     const fullEvent: ScheduleItem = {
       id: eventId,
       title: eventData.title || "(Không có tiêu đề)",
@@ -622,39 +658,64 @@ export default function App() {
       meetLink: eventData.meetLink,
       pomodoroBlocks: eventData.pomodoroBlocks || 1,
       isSyncedToGoogle: eventData.isSyncedToGoogle,
-      source: eventData.source || "local",
+      source: eventData.source || existing?.source || "local",
       bufferMinutes: eventData.bufferMinutes,
       transitMode: eventData.transitMode,
+      googleEventId,
+      googleCalendarId,
+      reminderMinutes: eventData.reminderMinutes,
     };
 
     // If sync with Google Calendar is requested and accessToken is present
-    if (fullEvent.isSyncedToGoogle && accessToken) {
-      try {
-        const reminderMins =
-          eventData.reminderMinutes ??
-          userProfile.defaultMeetReminderMinutes ??
-          30;
-        if (isNew || !fullEvent.googleEventId) {
-          const gcalRes = await createGoogleCalendarEvent(
+    if (accessToken) {
+      const reminderMins =
+        eventData.reminderMinutes ??
+        userProfile.defaultMeetReminderMinutes ??
+        30;
+      const targetCalId = fullEvent.googleCalendarId || selectedCalendarId;
+
+      if (fullEvent.isSyncedToGoogle) {
+        try {
+          if (!fullEvent.googleEventId) {
+            // Chưa có trên Google Calendar -> Tạo mới
+            const gcalRes = await createGoogleCalendarEvent(
+              accessToken,
+              targetCalId,
+              fullEvent,
+              fullEvent.hasMeet,
+              reminderMins,
+            );
+            fullEvent.googleEventId = gcalRes.id;
+            fullEvent.googleCalendarId = targetCalId;
+            if (gcalRes.hangoutLink) fullEvent.meetLink = gcalRes.hangoutLink;
+          } else {
+            // ĐÃ CÓ trên Google Calendar -> Cập nhật trực tiếp (PATCH), KHÔNG tạo mới thêm
+            await updateGoogleCalendarEvent(
+              accessToken,
+              targetCalId,
+              fullEvent.googleEventId,
+              fullEvent,
+              reminderMins,
+            );
+          }
+        } catch (err) {
+          console.error("Google calendar sync error:", err);
+        }
+      } else if (existing?.googleEventId && !fullEvent.isSyncedToGoogle) {
+        // Bỏ chọn sync Google -> Xóa khỏi Google Calendar
+        try {
+          await deleteGoogleCalendarEvent(
             accessToken,
-            selectedCalendarId,
-            fullEvent,
-            fullEvent.hasMeet,
-            reminderMins,
+            existing.googleCalendarId || selectedCalendarId,
+            existing.googleEventId,
           );
-          fullEvent.googleEventId = gcalRes.id;
-          if (gcalRes.hangoutLink) fullEvent.meetLink = gcalRes.hangoutLink;
-        } else if (fullEvent.googleEventId) {
-          await updateGoogleCalendarEvent(
-            accessToken,
-            selectedCalendarId,
-            fullEvent.googleEventId,
-            fullEvent,
-            reminderMins,
+          fullEvent.googleEventId = undefined;
+        } catch (err) {
+          console.error(
+            "Failed to delete un-synced event from Google Calendar:",
+            err,
           );
         }
-      } catch (err) {
-        console.error("Google calendar sync error:", err);
       }
     }
 
@@ -804,7 +865,7 @@ export default function App() {
           try {
             await deleteGoogleCalendarEvent(
               accessToken,
-              selectedCalendarId,
+              ev.googleCalendarId || selectedCalendarId,
               ev.googleEventId,
             );
           } catch (e) {
@@ -836,22 +897,63 @@ export default function App() {
       };
 
       setEvents((prev) => {
-        const next = prev.map((e) => (e.id === eventId ? updatedEvent : e));
+        const next = prev.map((e) => {
+          if (e.id === eventId) return updatedEvent;
+          if (e.bufferForEventId === eventId && e.bufferMinutes) {
+            const bufEnd = new Date(newStartTime);
+            const bufStart = new Date(
+              bufEnd.getTime() - e.bufferMinutes * 60 * 1000,
+            );
+            return {
+              ...e,
+              startTime: bufStart.toISOString(),
+              endTime: bufEnd.toISOString(),
+            };
+          }
+          return e;
+        });
         saveLocalSchedule(next);
         return next;
       });
 
       // Sync to Google Calendar if already synced
-      if (accessToken && targetEvent.googleEventId) {
-        try {
-          await updateGoogleCalendarEvent(
-            accessToken,
-            selectedCalendarId,
-            targetEvent.googleEventId,
-            updatedEvent,
-          );
-        } catch (err) {
-          console.error("Failed to update moved event on Google Calendar:", err);
+      if (accessToken) {
+        const calId = targetEvent.googleCalendarId || selectedCalendarId;
+        if (targetEvent.googleEventId) {
+          try {
+            await updateGoogleCalendarEvent(
+              accessToken,
+              calId,
+              targetEvent.googleEventId,
+              updatedEvent,
+            );
+          } catch (err) {
+            console.error(
+              "Failed to update moved event on Google Calendar:",
+              err,
+            );
+          }
+        } else if (targetEvent.isSyncedToGoogle) {
+          try {
+            const gcalRes = await createGoogleCalendarEvent(
+              accessToken,
+              calId,
+              updatedEvent,
+              updatedEvent.hasMeet,
+              targetEvent.reminderMinutes ?? 30,
+            );
+            updatedEvent.googleEventId = gcalRes.id;
+            updatedEvent.googleCalendarId = calId;
+            setEvents((prev) => {
+              const next = prev.map((e) =>
+                e.id === eventId ? updatedEvent : e,
+              );
+              saveLocalSchedule(next);
+              return next;
+            });
+          } catch (err) {
+            console.error("Failed to sync moved event to Google Calendar:", err);
+          }
         }
       }
     },

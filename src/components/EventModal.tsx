@@ -152,6 +152,9 @@ export const EventModal: React.FC<EventModalProps> = ({
       meetLink: hasMeet ? meetLink.trim() || undefined : undefined,
       pomodoroBlocks,
       isSyncedToGoogle: hasGoogleConnected && syncToGoogle,
+      googleEventId: event?.googleEventId,
+      googleCalendarId: event?.googleCalendarId,
+      source: event?.source,
       reminderMinutes:
         hasGoogleConnected && syncToGoogle ? reminderMinutes : undefined,
       bufferMinutes: addTravelBuffer ? bufferMinutes : undefined,
