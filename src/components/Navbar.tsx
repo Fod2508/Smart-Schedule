@@ -23,6 +23,7 @@ import {
   LayoutGrid,
   Search,
   Check,
+  RefreshCw,
 } from "lucide-react";
 import { User } from "firebase/auth";
 import { UiTheme } from "../types/schedule";
@@ -484,25 +485,54 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             {/* Auth */}
-            {user && hasWorkspaceToken ? (
-              <div className="flex items-center gap-1 pl-1 border-l border-zinc-200 dark:border-zinc-700 ml-1">
-                {user.photoURL ? (
-                  <img
-                    src={user.photoURL}
-                    alt={user.displayName || "Avatar"}
-                    className="w-7 h-7 rounded-full border border-zinc-300 dark:border-zinc-600"
-                    title={user.email || ""}
+            {user ? (
+              <div className="flex items-center gap-1.5 pl-1.5 border-l border-zinc-200 dark:border-zinc-700 ml-1">
+                <div className="relative">
+                  {user.photoURL ? (
+                    <img
+                      src={user.photoURL}
+                      alt={user.displayName || "Avatar"}
+                      className="w-7 h-7 rounded-full border border-zinc-300 dark:border-zinc-600"
+                      title={user.email || ""}
+                    />
+                  ) : (
+                    <div
+                      className="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs"
+                      title={user.email || ""}
+                    >
+                      {user.displayName?.charAt(0) ||
+                        user.email?.charAt(0) ||
+                        "U"}
+                    </div>
+                  )}
+                  {/* Status indicator: green = Workspace active, amber = needs renewal */}
+                  <span
+                    className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-zinc-900 ${
+                      hasWorkspaceToken ? "bg-emerald-500" : "bg-amber-400"
+                    }`}
+                    title={
+                      hasWorkspaceToken
+                        ? "Google Workspace đã kết nối (Calendar, Tasks, Sheets)"
+                        : "Phiên kết nối Google Calendar hết hạn (1h). Bấm Gia hạn để nối lại ngay."
+                    }
                   />
-                ) : (
-                  <div
-                    className="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs"
-                    title={user.email || ""}
+                </div>
+
+                {!hasWorkspaceToken && (
+                  <button
+                    type="button"
+                    onClick={onLogin}
+                    disabled={isLoggingIn}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-[11px] font-semibold transition cursor-pointer disabled:opacity-60"
+                    title="Phiên kết nối Google Workspace hết hạn sau 1 giờ. Bấm để kết nối lại nhanh chỉ với 1 click"
                   >
-                    {user.displayName?.charAt(0) ||
-                      user.email?.charAt(0) ||
-                      "U"}
-                  </div>
+                    <RefreshCw className={`w-3 h-3 ${isLoggingIn ? "animate-spin" : ""}`} />
+                    <span className="hidden sm:inline">
+                      {isLoggingIn ? "Đang nối..." : "Gia hạn"}
+                    </span>
+                  </button>
                 )}
+
                 <button
                   onClick={onLogout}
                   className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition"

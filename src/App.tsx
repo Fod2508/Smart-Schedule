@@ -428,11 +428,12 @@ export default function App() {
   // Sign In with Google
   const [loginError, setLoginError] = useState<string | null>(null);
 
-  const handleLogin = async () => {
+  const handleLogin = async (customHint?: string) => {
     setIsLoggingIn(true);
     setLoginError(null);
     try {
-      const res = await googleSignIn();
+      const emailHint = customHint || user?.email || undefined;
+      const res = await googleSignIn(emailHint);
       if (res) {
         setUser(res.user);
         setAccessToken(res.accessToken);
