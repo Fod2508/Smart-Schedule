@@ -18,6 +18,7 @@ import {
   Moon,
   ArrowRight,
   Command,
+  X,
 } from "lucide-react";
 import { ScheduleItem } from "../types/schedule";
 
@@ -408,9 +409,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             placeholder="Tìm kiếm sự kiện hoặc gõ lệnh (AI, Pomodoro, Sheets, Lịch...)"
             className="w-full bg-transparent px-3 text-sm font-medium text-zinc-800 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none"
           />
-          <kbd className="hidden sm:inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-semibold text-zinc-400 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md">
-            ESC
-          </kbd>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer shrink-0"
+            title="Đóng (Esc)"
+            aria-label="Đóng bảng lệnh"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
         {/* Action List */}
