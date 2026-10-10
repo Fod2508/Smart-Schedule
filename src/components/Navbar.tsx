@@ -521,7 +521,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {!hasWorkspaceToken && (
                   <button
                     type="button"
-                    onClick={onLogin}
+                    onClick={() => onLogin()}
                     disabled={isLoggingIn}
                     className="inline-flex items-center gap-1 px-2 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-[11px] font-semibold transition cursor-pointer disabled:opacity-60"
                     title="Phiên kết nối Google Workspace hết hạn sau 1 giờ. Bấm để kết nối lại nhanh chỉ với 1 click"
@@ -544,7 +544,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             ) : (
               <button
                 type="button"
-                onClick={onLogin}
+                onClick={() => onLogin()}
                 disabled={isLoggingIn}
                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl border border-zinc-200/80 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 text-xs font-bold text-zinc-700 dark:text-zinc-200 btn-3d-neutral transition cursor-pointer disabled:opacity-60 ml-1"
               >

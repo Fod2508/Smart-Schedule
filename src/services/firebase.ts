@@ -100,15 +100,15 @@ export const initAuth = (
 };
 
 // Must be called from a button click or user interaction
-export const googleSignIn = async (loginHint?: string): Promise<{
+export const googleSignIn = async (loginHint?: any): Promise<{
   user: User;
   accessToken: string;
 } | null> => {
   try {
     isSigningIn = true;
-    if (loginHint) {
+    if (typeof loginHint === "string" && loginHint.trim()) {
       provider.setCustomParameters({
-        login_hint: loginHint,
+        login_hint: loginHint.trim(),
       });
     } else {
       provider.setCustomParameters({

@@ -428,11 +428,16 @@ export default function App() {
   // Sign In with Google
   const [loginError, setLoginError] = useState<string | null>(null);
 
-  const handleLogin = async (customHint?: string) => {
+  const handleLogin = async (customHint?: any) => {
     setIsLoggingIn(true);
     setLoginError(null);
     try {
-      const emailHint = customHint || user?.email || undefined;
+      const emailHint =
+        typeof customHint === "string" && customHint.trim()
+          ? customHint.trim()
+          : typeof user?.email === "string" && user.email.trim()
+            ? user.email.trim()
+            : undefined;
       const res = await googleSignIn(emailHint);
       if (res) {
         setUser(res.user);
@@ -1234,7 +1239,7 @@ export default function App() {
         user={user}
         hasWorkspaceToken={!!accessToken}
         isLoggingIn={isLoggingIn}
-        onLogin={handleLogin}
+        onLogin={() => handleLogin()}
         onLogout={handleLogout}
         conflictCount={conflicts.length}
         onOpenConflicts={() => {
@@ -1423,7 +1428,7 @@ export default function App() {
         onCompleteTask={handleCompleteGoogleTask}
         isLoading={isLoadingTasks}
         hasGoogleConnected={!!accessToken}
-        onConnectGoogle={handleLogin}
+        onConnectGoogle={() => handleLogin()}
       />
 
       {/* Conflict Resolver Modal with AI */}
@@ -1482,7 +1487,7 @@ export default function App() {
           }));
           setEvents((prev) => [...prev, ...newItems]);
         }}
-        onConnectGoogle={handleLogin}
+        onConnectGoogle={() => handleLogin()}
       />
 
       {/* Gmail Digest Modal */}
@@ -1493,7 +1498,7 @@ export default function App() {
         userEmail={userProfile.email}
         userName={userProfile.name}
         accessToken={accessToken}
-        onConnectGoogle={handleLogin}
+        onConnectGoogle={() => handleLogin()}
         onRequestConfirmSend={(onConfirmSend, details) => {
           setConfirmConfig({
             isOpen: true,
