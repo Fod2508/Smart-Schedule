@@ -41,6 +41,7 @@ export const SheetsModal: React.FC<SheetsModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'export' | 'import' | 'templates'>('export');
   const [exportScope, setExportScope] = useState<'week' | 'all'>('week');
+  const [exportLayout, setExportLayout] = useState<'both' | 'timetable_grid' | 'detailed_list'>('both');
   const [selectedWeekDate, setSelectedWeekDate] = useState<Date>(() => currentDate || new Date());
   const [sheetTitle, setSheetTitle] = useState('');
   const [isExporting, setIsExporting] = useState(false);
@@ -155,7 +156,15 @@ export const SheetsModal: React.FC<SheetsModalProps> = ({
     setIsExporting(true);
     setErrorMsg(null);
     try {
-      const res = await exportScheduleToNewSpreadsheet(accessToken, sheetTitle, targetEvents);
+      const res = await exportScheduleToNewSpreadsheet(
+        accessToken,
+        sheetTitle,
+        targetEvents,
+        {
+          layout: exportLayout,
+          weekRange: { monday, sunday },
+        }
+      );
       setExportUrl(res.spreadsheetUrl);
     } catch (e: any) {
       setErrorMsg(e.message || 'Lỗi khi xuất Google Sheet');
@@ -476,6 +485,65 @@ export const SheetsModal: React.FC<SheetsModalProps> = ({
                 </div>
               )}
 
+              {/* Lựa chọn kiểu bố cục bảng tính */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                  Bố cục hiển thị trong Google Sheets
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setExportLayout('both')}
+                    className={`p-2.5 rounded-2xl border text-left transition flex flex-col gap-0.5 cursor-pointer ${
+                      exportLayout === 'both'
+                        ? 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-100 ring-2 ring-emerald-500/20'
+                        : 'border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/40 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                    }`}
+                  >
+                    <span className="font-bold text-xs flex items-center gap-1">
+                      ✨ Cả 2 dạng
+                    </span>
+                    <span className="text-[10px] opacity-75">
+                      Lưới tuần + Bảng chi tiết
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setExportLayout('timetable_grid')}
+                    className={`p-2.5 rounded-2xl border text-left transition flex flex-col gap-0.5 cursor-pointer ${
+                      exportLayout === 'timetable_grid'
+                        ? 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-100 ring-2 ring-emerald-500/20'
+                        : 'border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/40 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                    }`}
+                  >
+                    <span className="font-bold text-xs flex items-center gap-1">
+                      📅 Lưới lịch tuần
+                    </span>
+                    <span className="text-[10px] opacity-75">
+                      Thứ 2 - CN & Giờ dọc
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setExportLayout('detailed_list')}
+                    className={`p-2.5 rounded-2xl border text-left transition flex flex-col gap-0.5 cursor-pointer ${
+                      exportLayout === 'detailed_list'
+                        ? 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-100 ring-2 ring-emerald-500/20'
+                        : 'border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/40 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                    }`}
+                  >
+                    <span className="font-bold text-xs flex items-center gap-1">
+                      📋 Bảng danh sách
+                    </span>
+                    <span className="text-[10px] opacity-75">
+                      Dữ liệu theo từng dòng
+                    </span>
+                  </button>
+                </div>
+              </div>
+
               {/* Tiêu đề bảng tính */}
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
@@ -491,13 +559,17 @@ export const SheetsModal: React.FC<SheetsModalProps> = ({
 
               {/* Mô tả chi tiết dữ liệu sẽ xuất */}
               <div className="p-3 rounded-2xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-100 dark:border-zinc-800 text-xs text-zinc-600 dark:text-zinc-400">
-                {exportScope === 'week' ? (
+                {exportLayout === 'timetable_grid' ? (
                   <span>
-                    Sẽ xuất <span className="font-bold text-emerald-600 dark:text-emerald-400">{weekEvents.length}</span> sự kiện và môn học thuộc tuần từ <span className="font-semibold">{formatShortDate(monday)}</span> đến <span className="font-semibold">{formatShortDate(sunday)}</span>, được định dạng chuyên nghiệp với các cột: Môn/Hoạt động, Bắt đầu, Kết thúc, Phân loại, Mức độ ưu tiên, Google Meet, Pomodoro và Ghi chú.
+                    Sẽ xuất dưới dạng <strong>Lưới thời khóa biểu</strong>: Các cột ngang là Thứ 2 đến Chủ nhật, cột dọc là khung giờ (06:00 - 22:00) và các công việc được điền trực tiếp vào ô ngày & giờ tương ứng.
+                  </span>
+                ) : exportLayout === 'both' ? (
+                  <span>
+                    Bảng tính Google Sheets sẽ có <strong>2 trang tính (Tabs)</strong>: Tab 1 là <strong>Lịch tuần dạng lưới (Thứ 2 - CN)</strong> xếp công việc theo giờ, Tab 2 là <strong>Danh sách chi tiết</strong> để tiện tra cứu & lọc.
                   </span>
                 ) : (
                   <span>
-                    Sẽ xuất toàn bộ <span className="font-bold text-zinc-900 dark:text-zinc-100">{events.length}</span> sự kiện và môn học hiện có trong hệ thống vào bảng tính mới.
+                    Sẽ xuất dưới dạng <strong>Bảng danh sách chi tiết</strong>: Mỗi hàng là một sự kiện với đầy đủ ngày giờ, môn học, Meet link và ghi chú.
                   </span>
                 )}
               </div>
