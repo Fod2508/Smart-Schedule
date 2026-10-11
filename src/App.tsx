@@ -1470,6 +1470,7 @@ export default function App() {
         isOpen={isSheetsOpen}
         onClose={() => setIsSheetsOpen(false)}
         events={events}
+        currentDate={currentDate}
         accessToken={accessToken}
         onImportItems={(imported) => {
           const newItems: ScheduleItem[] = imported.map((item, idx) => ({

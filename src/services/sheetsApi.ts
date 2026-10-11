@@ -21,6 +21,11 @@ export async function exportScheduleToNewSpreadsheet(
 
   if (!createRes.ok) {
     const err = await createRes.json().catch(() => ({}));
+    if (createRes.status === 401) {
+      throw new Error(
+        'Phiên đăng nhập Google đã hết hạn (401). Vui lòng bấm Gia hạn hoặc kết nối lại Google.'
+      );
+    }
     throw new Error(err.error?.message || `Lỗi tạo Google Sheet mới (${createRes.status})`);
   }
 
@@ -100,6 +105,11 @@ export async function exportScheduleToNewSpreadsheet(
 
   if (!valuesRes.ok) {
     const err = await valuesRes.json().catch(() => ({}));
+    if (valuesRes.status === 401) {
+      throw new Error(
+        'Phiên đăng nhập Google đã hết hạn (401). Vui lòng bấm Gia hạn hoặc kết nối lại Google.'
+      );
+    }
     throw new Error(err.error?.message || `Lỗi ghi dữ liệu vào Google Sheet (${valuesRes.status})`);
   }
 
@@ -166,6 +176,11 @@ export async function readScheduleFromSpreadsheet(
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
+    if (res.status === 401) {
+      throw new Error(
+        'Phiên đăng nhập Google đã hết hạn (401). Vui lòng bấm Gia hạn hoặc kết nối lại Google.'
+      );
+    }
     throw new Error(err.error?.message || `Lỗi đọc dữ liệu Google Sheet (${res.status})`);
   }
 
