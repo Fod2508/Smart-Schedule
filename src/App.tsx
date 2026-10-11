@@ -1522,6 +1522,7 @@ export default function App() {
         onClose={() => setIsAnalyticsOpen(false)}
         events={events}
         userProfile={userProfile}
+        currentDate={currentDate}
         onApplyOptimizedEvents={(optimized) => {
           // Merge: update các event có id trùng, giữ nguyên các event không có trong optimized
           const optimizedMap = new Map(optimized.map((e) => [e.id, e]));

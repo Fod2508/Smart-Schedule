@@ -552,7 +552,7 @@ Hồ sơ người dùng: ${JSON.stringify(userProfile)}
 Hãy đưa ra:
 1. Đánh giá tổng quan điểm số năng suất (0-100) và lý do.
 2. Danh sách các đề xuất cải thiện cụ thể (chèn break, đổi giờ để hợp với chronotype, v.v.).
-3. Danh sách sự kiện sau khi đã được tối ưu hoặc thêm các block "Nghỉ ngơi / Pomodoro break".`;
+3. Danh sách sự kiện sau khi đã được tối ưu hoặc thêm các block "Nghỉ ngơi / Pomodoro break". Mỗi sự kiện nếu giữ nguyên từ sự kiện cũ hãy giữ nguyên "id" (nếu có), nếu có thay đổi giờ hoặc tạo mới hãy ghi rõ trường "changeReason" giải thích sự thay đổi hoặc lý do tạo mới (ví dụ: "Dời lùi 30p để tránh quá tải", "Chèn nghỉ ngơi 15p sau buổi học dài", "Giữ nguyên").`;
 
     const response = await callGeminiSafe({
       contents: `Tối ưu hóa lịch trình sau:\n${JSON.stringify(events, null, 2)}`,
@@ -573,6 +573,7 @@ Hãy đưa ra:
               items: {
                 type: Type.OBJECT,
                 properties: {
+                  id: { type: Type.STRING },
                   title: { type: Type.STRING },
                   description: { type: Type.STRING },
                   startTime: { type: Type.STRING },
@@ -581,6 +582,7 @@ Hãy đưa ra:
                   priority: { type: Type.STRING },
                   hasMeet: { type: Type.BOOLEAN },
                   isBreak: { type: Type.BOOLEAN },
+                  changeReason: { type: Type.STRING },
                 },
                 required: [
                   "title",
@@ -616,7 +618,7 @@ Hãy đưa ra:
         "Xếp nhiệm vụ khó và đòi hỏi tập trung cao vào đầu ngày khi năng lượng dồi dào nhất.",
         "Dành 20-30 phút sau bữa trưa để thả lỏng cơ thể và phục hồi tinh thần.",
       ],
-      optimizedEvents: events,
+      optimizedEvents: events.map((e: any) => ({ ...e, changeReason: "Giữ nguyên" })),
     });
   }
 });

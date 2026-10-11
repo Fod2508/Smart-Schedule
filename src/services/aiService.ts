@@ -21,6 +21,7 @@ export interface OptimizationResult {
   scoreExplanation: string;
   suggestions: string[];
   optimizedEvents: Array<{
+    id?: string;
     title: string;
     description?: string;
     startTime: string;
@@ -29,6 +30,7 @@ export interface OptimizationResult {
     priority: ScheduleItem['priority'];
     hasMeet?: boolean;
     isBreak?: boolean;
+    changeReason?: string;
   }>;
 }
 
