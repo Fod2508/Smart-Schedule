@@ -181,13 +181,28 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
     return day;
   });
 
-  // Hours: 07:00 to 22:00
-  const START_HOUR = 7;
-  const END_HOUR = 22;
+  // Reference for time grid container to support smooth auto-scroll to current time
+  const timeGridRef = useRef<HTMLDivElement>(null);
+
+  // Hours: 00:00 to 23:00 (Hiển thị đầy đủ 24 giờ cả ngày và đêm)
+  const START_HOUR = 0;
+  const END_HOUR = 23;
   const hours = Array.from(
     { length: END_HOUR - START_HOUR + 1 },
     (_, i) => START_HOUR + i,
   );
+
+  // Tự động cuộn lưới lịch đến giờ hiện tại (hoặc 7h sáng nếu sáng sớm) để người dùng xem ngay giờ ban ngày
+  useEffect(() => {
+    if (timeGridRef.current) {
+      const now = new Date();
+      const currentH = now.getHours();
+      const targetHour = currentH >= 7 ? Math.max(0, currentH - 1) : 7;
+      const rowHeight =
+        zoomLevel === "compact" ? 38 : zoomLevel === "spacious" ? 72 : 54;
+      timeGridRef.current.scrollTop = targetHour * rowHeight;
+    }
+  }, [viewMode, currentDate]);
 
   // Check if a date is today
   const isToday = (d: Date) => {
@@ -1053,11 +1068,12 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
 
             {/* Time Grid body */}
             <div
+              ref={timeGridRef}
               className={`relative ${
                 isFullscreen
                   ? "max-h-[calc(100vh-210px)] overflow-y-auto"
                   : zoomLevel === "compact"
-                    ? "max-h-none overflow-visible"
+                    ? "max-h-[640px] overflow-y-auto"
                     : zoomLevel === "spacious"
                       ? "max-h-[780px] overflow-y-auto"
                       : "max-h-[620px] overflow-y-auto"
@@ -1137,7 +1153,11 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
                       });
 
                       const slotStartISO = `${dayStr}T${hour.toString().padStart(2, "0")}:00:00`;
-                      const slotEndISO = `${dayStr}T${(hour + 1).toString().padStart(2, "0")}:00:00`;
+                      const nextDate = new Date(day);
+                      nextDate.setHours(hour + 1, 0, 0, 0);
+                      const nextDayStr = localDateStr(nextDate);
+                      const nextHourStr = String(nextDate.getHours()).padStart(2, "0");
+                      const slotEndISO = `${nextDayStr}T${nextHourStr}:00:00`;
                       const slotKey = `${dayStr}_${hour}`;
                       const isDragOver = dragOverSlot === slotKey;
 
