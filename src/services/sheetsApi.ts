@@ -5,7 +5,8 @@ export async function exportScheduleToNewSpreadsheet(
   title: string,
   items: ScheduleItem[]
 ): Promise<{ spreadsheetId: string; spreadsheetUrl: string }> {
-  // 1. Create new spreadsheet
+  // 1. Create new spreadsheet with explicit sheet definition to avoid locale differences (Sheet1 vs Trang tính 1)
+  const defaultSheetName = 'ThoiKhoaBieu';
   const createRes = await fetch('https://sheets.googleapis.com/v4/spreadsheets', {
     method: 'POST',
     headers: {
@@ -16,6 +17,17 @@ export async function exportScheduleToNewSpreadsheet(
       properties: {
         title: title || `Smart Schedule - Thời khóa biểu (${new Date().toLocaleDateString('vi-VN')})`,
       },
+      sheets: [
+        {
+          properties: {
+            sheetId: 0,
+            title: defaultSheetName,
+            gridProperties: {
+              frozenRowCount: 1,
+            },
+          },
+        },
+      ],
     }),
   });
 
@@ -32,6 +44,9 @@ export async function exportScheduleToNewSpreadsheet(
   const sheetData = await createRes.json();
   const spreadsheetId = sheetData.spreadsheetId;
   const spreadsheetUrl = sheetData.spreadsheetUrl;
+  const firstSheet = sheetData.sheets?.[0]?.properties;
+  const sheetTitle = firstSheet?.title || defaultSheetName;
+  const targetSheetId = firstSheet?.sheetId ?? 0;
 
   // 2. Prepare rows
   const headers = [
@@ -85,8 +100,8 @@ export async function exportScheduleToNewSpreadsheet(
     ];
   });
 
-  // 3. Populate values
-  const range = 'Sheet1!A1:H' + (rows.length + 1);
+  // 3. Populate values using exact sheet title
+  const range = `'${sheetTitle}'!A1:H${rows.length + 1}`;
   const valuesRes = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
     {
@@ -126,7 +141,7 @@ export async function exportScheduleToNewSpreadsheet(
           {
             repeatCell: {
               range: {
-                sheetId: 0,
+                sheetId: targetSheetId,
                 startRowIndex: 0,
                 endRowIndex: 1,
                 startColumnIndex: 0,
@@ -145,7 +160,7 @@ export async function exportScheduleToNewSpreadsheet(
           {
             autoResizeDimensions: {
               dimensions: {
-                sheetId: 0,
+                sheetId: targetSheetId,
                 dimension: 'COLUMNS',
                 startIndex: 0,
                 endIndex: 8,
@@ -165,9 +180,37 @@ export async function exportScheduleToNewSpreadsheet(
 export async function readScheduleFromSpreadsheet(
   accessToken: string,
   spreadsheetId: string,
-  range: string = 'Sheet1!A2:H50'
+  range?: string
 ): Promise<Partial<ScheduleItem>[]> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`;
+  // Tự động tìm tên trang tính đầu tiên để tránh lỗi locale Sheet1 vs Trang tính 1
+  let targetRange = range;
+  if (!targetRange) {
+    try {
+      const metaRes = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}?fields=sheets.properties.title`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+      if (metaRes.ok) {
+        const meta = await metaRes.json();
+        const firstSheetTitle = meta.sheets?.[0]?.properties?.title;
+        if (firstSheetTitle) {
+          targetRange = `'${firstSheetTitle}'!A2:H100`;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch spreadsheet title metadata:', e);
+    }
+  }
+
+  if (!targetRange) {
+    targetRange = 'A2:H100';
+  }
+
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(targetRange)}`;
   const res = await fetch(url, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
