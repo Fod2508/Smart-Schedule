@@ -1537,6 +1537,10 @@ export default function App() {
         events={events}
         userProfile={userProfile}
         currentDate={currentDate}
+        onUpdateEvents={(newEvents) => {
+          setEvents(newEvents);
+          saveLocalSchedule(newEvents);
+        }}
         onApplyOptimizedEvents={(optimized) => {
           // Merge: update các event có id trùng, giữ nguyên các event không có trong optimized
           const optimizedMap = new Map(optimized.map((e) => [e.id, e]));
@@ -1547,7 +1551,9 @@ export default function App() {
             // Thêm các event mới (id không tồn tại trong prev)
             const prevIds = new Set(prev.map((e) => e.id));
             const newOnes = optimized.filter((e) => !prevIds.has(e.id));
-            return [...updated, ...newOnes];
+            const nextList = [...updated, ...newOnes];
+            saveLocalSchedule(nextList);
+            return nextList;
           });
         }}
       />

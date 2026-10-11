@@ -623,6 +623,84 @@ Hãy đưa ra:
   }
 });
 
+// AI Route: Weekly Retrospective & Uncompleted Backlog Review
+app.post("/api/ai/weekly-retrospective", async (req, res) => {
+  const {
+    prevWeekLabel = "",
+    prevWeekEvents = [],
+    uncompletedEvents = [],
+    completionRate = 0,
+    userProfile = {},
+  } = req.body;
+
+  try {
+    const systemInstruction = `Bạn là Chuyên gia Khai vấn Hiệu suất & Tâm lý Học tập/Làm việc (Weekly Retrospective & Productivity Coach AI).
+Nhiệm vụ của bạn là xem lại kết quả tuần trước (${prevWeekLabel}) của người dùng, phân tích các việc chưa hoàn thành, đưa ra lời đánh giá mang tính động viên, xây dựng và gợi ý cách dứt điểm các việc tồn đọng mà không bị kiệt sức.
+
+Hồ sơ người dùng: ${JSON.stringify(userProfile)}
+Số sự kiện tuần trước: ${prevWeekEvents.length}
+Tỷ lệ hoàn thành: ${completionRate}%
+Danh sách việc chưa hoàn thành: ${JSON.stringify(uncompletedEvents.map((e: any) => ({ title: e.title, category: e.category, priority: e.priority })))}
+
+Yêu cầu đầu ra JSON:
+1. vibeBadge: 'on_fire' (nếu completionRate >= 80) | 'steady' (nếu 60 <= completionRate < 80) | 'needs_rest' (nếu < 60).
+2. vibeTitle: Tên huy hiệu ngắn gọn (ví dụ: "Phong Độ Xuất Sắc", "Cân Bằng Ổn Định", "Cần Giảm Tải & Thả Lỏng").
+3. summary: Nhận xét tổng quan súc tích (1-2 câu), đồng cảm, chỉ ra nguyên nhân hoặc khen ngợi nỗ lực.
+4. actionableAdvice: Mảng 2-3 gợi ý hành động cụ thể để xử lý các việc tồn và lên kế hoạch tốt hơn cho tuần này.`;
+
+    const response = await callGeminiSafe({
+      contents: `Hãy phân tích tuần trước với tỷ lệ hoàn thành ${completionRate}% và ${uncompletedEvents.length} việc chưa xong.`,
+      config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            vibeBadge: { type: Type.STRING },
+            vibeTitle: { type: Type.STRING },
+            summary: { type: Type.STRING },
+            actionableAdvice: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+            },
+          },
+          required: ["vibeBadge", "vibeTitle", "summary", "actionableAdvice"],
+        },
+      },
+    });
+
+    const parsedData = JSON.parse(response.text || "{}");
+    return res.json(parsedData);
+  } catch (error: any) {
+    console.warn("Error in weekly-retrospective, using fallback:", error?.message);
+    const badge =
+      completionRate >= 80 ? "on_fire" : completionRate >= 60 ? "steady" : "needs_rest";
+    const title =
+      completionRate >= 80
+        ? "Phong Độ Xuất Sắc"
+        : completionRate >= 60
+        ? "Cân Bằng Ổn Định"
+        : "Cần Giảm Tải & Thả Lỏng";
+    const summary =
+      completionRate >= 80
+        ? `Bạn đã hoàn thành xuất sắc ${completionRate}% công việc tuần trước! Hãy duy trì năng lượng này.`
+        : completionRate >= 60
+        ? `Bạn đạt ${completionRate}% tiến độ tuần trước. Vài việc còn dang dở có thể được dời sang tuần này để giải quyết dứt điểm.`
+        : `Tuần trước bạn hoàn thành ${completionRate}%, có thể do khối lượng việc quá tải. Hãy dành thời gian dọn dẹp các việc tồn và cho bản thân nghỉ ngơi hợp lý.`;
+
+    return res.json({
+      vibeBadge: badge,
+      vibeTitle: title,
+      summary,
+      actionableAdvice: [
+        "Chọn 1-2 việc quan trọng nhất từ tuần trước để dứt điểm ngay trong nửa đầu tuần này.",
+        "Tránh xếp thêm việc mới vào các khung giờ đã có việc tồn đọng chuyển sang.",
+        "Dành ít nhất 1 buổi tối để thả lỏng cơ thể và tái tạo năng lượng tập trung.",
+      ],
+    });
+  }
+});
+
 // AI Route 3: Conflict Resolution
 app.post("/api/ai/resolve-conflicts", async (req, res) => {
   const { conflictA, conflictB, allEvents = [] } = req.body;

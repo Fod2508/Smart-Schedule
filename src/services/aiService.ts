@@ -298,4 +298,38 @@ export async function analyzeTravelBuffersWithAI(
   return await res.json();
 }
 
+export interface WeeklyRetrospectiveResult {
+  vibeBadge: 'on_fire' | 'steady' | 'needs_rest';
+  vibeTitle: string;
+  summary: string;
+  actionableAdvice: string[];
+}
+
+export async function getWeeklyRetrospectiveWithAI(
+  prevWeekLabel: string,
+  prevWeekEvents: ScheduleItem[],
+  uncompletedEvents: ScheduleItem[],
+  completionRate: number,
+  userProfile: UserProfile
+): Promise<WeeklyRetrospectiveResult> {
+  const res = await fetch('/api/ai/weekly-retrospective', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prevWeekLabel,
+      prevWeekEvents,
+      uncompletedEvents,
+      completionRate,
+      userProfile,
+    }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Lỗi khi AI đánh giá tuần trước');
+  }
+
+  return await res.json();
+}
+
 
