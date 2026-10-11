@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   X,
   Users,
@@ -18,6 +18,8 @@ import {
   Loader2,
   Vote,
   ExternalLink,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { ScheduleItem } from '../types/schedule';
 import {
@@ -25,12 +27,19 @@ import {
   TeamCandidateSlot,
   TeamSlotFinderResult,
 } from '../services/aiService';
+import {
+  getMondayOfWeek,
+  getSundayOfWeek,
+  formatWeekRange,
+  isEventInWeek,
+} from '../utils/dateUtils';
 
 interface TeamMeetingModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentEvents: ScheduleItem[];
   weekStart: string;
+  currentDate?: Date;
   onScheduleMeeting: (meeting: Partial<ScheduleItem>, attendees: string[]) => void;
 }
 
@@ -39,10 +48,25 @@ export const TeamMeetingModal: React.FC<TeamMeetingModalProps> = ({
   onClose,
   currentEvents,
   weekStart,
+  currentDate,
   onScheduleMeeting,
 }) => {
   const [meetingTitle, setMeetingTitle] = useState('Họp Sprint Review & Kế hoạch tuần');
   const [durationMinutes, setDurationMinutes] = useState(60);
+  const [selectedWeekDate, setSelectedWeekDate] = useState<Date>(
+    () => currentDate || (weekStart ? new Date(weekStart) : new Date())
+  );
+
+  const monday = useMemo(() => getMondayOfWeek(selectedWeekDate), [selectedWeekDate]);
+  const sunday = useMemo(() => getSundayOfWeek(monday), [monday]);
+  const weekLabel = useMemo(() => formatWeekRange(monday, sunday), [monday, sunday]);
+
+  // Scope events to the selected week
+  const weekEvents = useMemo(() => {
+    return currentEvents.filter((e) =>
+      isEventInWeek(e.startTime, e.endTime, monday, sunday)
+    );
+  }, [currentEvents, monday, sunday]);
   const [attendees, setAttendees] = useState<string[]>([
     'Trưởng nhóm',
     'Thành viên dev',
@@ -87,9 +111,9 @@ export const TeamMeetingModal: React.FC<TeamMeetingModalProps> = ({
         meetingTitle.trim(),
         durationMinutes,
         attendees,
-        currentEvents,
+        weekEvents,
         memberConstraints.trim(),
-        weekStart
+        monday.toISOString()
       );
       setResult(res);
 
@@ -219,6 +243,38 @@ export const TeamMeetingModal: React.FC<TeamMeetingModalProps> = ({
 
           {/* Form setup if no result OR on first view */}
           <div className="space-y-3.5">
+            {/* Week navigation banner */}
+            <div className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 text-xs">
+              <span className="font-semibold text-zinc-700 dark:text-zinc-200 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Tìm giờ trong tuần: <strong>{weekLabel}</strong> ({weekEvents.length} sự kiện đã có)</span>
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedWeekDate(new Date(selectedWeekDate.getTime() - 7 * 86400000));
+                    setResult(null);
+                  }}
+                  className="p-1 rounded-lg border border-zinc-200 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition cursor-pointer"
+                  title="Tuần trước"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedWeekDate(new Date(selectedWeekDate.getTime() + 7 * 86400000));
+                    setResult(null);
+                  }}
+                  className="p-1 rounded-lg border border-zinc-200 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition cursor-pointer"
+                  title="Tuần sau"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="sm:col-span-2">
                 <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   X,
   Car,
@@ -15,6 +15,9 @@ import {
   Sliders,
   Check,
   Info,
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
 } from "lucide-react";
 import {
   ScheduleItem,
@@ -23,11 +26,18 @@ import {
   TravelScanResult,
 } from "../types/schedule";
 import { analyzeTravelBuffersWithAI } from "../services/aiService";
+import {
+  getMondayOfWeek,
+  getSundayOfWeek,
+  formatWeekRange,
+  isEventInWeek,
+} from "../utils/dateUtils";
 
 interface TravelBufferModalProps {
   isOpen: boolean;
   onClose: () => void;
   events: ScheduleItem[];
+  currentDate?: Date;
   onApplyBuffers: (newEvents: ScheduleItem[]) => void;
 }
 
@@ -35,8 +45,13 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
   isOpen,
   onClose,
   events,
+  currentDate,
   onApplyBuffers,
 }) => {
+  const [timeRange, setTimeRange] = useState<"week" | "all">("week");
+  const [selectedWeekDate, setSelectedWeekDate] = useState<Date>(
+    () => currentDate || new Date()
+  );
   const [transitMode, setTransitMode] = useState<TransitMode>("motorcycle");
   const [defaultBufferMinutes, setDefaultBufferMinutes] = useState(25);
   const [autoShiftHazards, setAutoShiftHazards] = useState(true);
@@ -45,8 +60,20 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isApplied, setIsApplied] = useState(false);
 
-  // Existing travel buffer events currently on schedule
-  const existingBuffers = events.filter((e) => e.isTravelBuffer);
+  const monday = useMemo(() => getMondayOfWeek(selectedWeekDate), [selectedWeekDate]);
+  const sunday = useMemo(() => getSundayOfWeek(monday), [monday]);
+  const weekLabel = useMemo(() => formatWeekRange(monday, sunday), [monday, sunday]);
+
+  // Scoped events based on timeRange
+  const activeEvents = useMemo(() => {
+    if (timeRange === "all") return events;
+    return events.filter((e) =>
+      isEventInWeek(e.startTime, e.endTime, monday, sunday)
+    );
+  }, [events, timeRange, monday, sunday]);
+
+  // Existing travel buffer events currently on schedule in active scope
+  const existingBuffers = activeEvents.filter((e) => e.isTravelBuffer);
 
   // Khai báo handleScan trước useEffect để tránh stale closure
   const handleScan = useCallback(async () => {
@@ -55,7 +82,7 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
     setIsApplied(false);
     try {
       const res = await analyzeTravelBuffersWithAI(
-        events,
+        activeEvents,
         transitMode,
         defaultBufferMinutes,
       );
@@ -66,21 +93,14 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [events, transitMode, defaultBufferMinutes]);
+  }, [activeEvents, transitMode, defaultBufferMinutes]);
 
-  // Scan khi mở modal lần đầu
+  // Scan khi mở modal lần đầu hoặc đổi activeEvents/settings
   useEffect(() => {
     if (isOpen) {
       handleScan();
     }
   }, [isOpen, handleScan]);
-
-  // Re-scan khi đổi settings (debounced — chỉ sau khi user dừng tay)
-  useEffect(() => {
-    if (!isOpen) return;
-    const t = setTimeout(() => handleScan(), 600);
-    return () => clearTimeout(t);
-  }, [transitMode, defaultBufferMinutes, handleScan]);
 
   if (!isOpen) return null;
 
@@ -282,6 +302,75 @@ export const TravelBufferModal: React.FC<TravelBufferModalProps> = ({
           >
             <X className="w-5 h-5" />
           </button>
+        </div>
+
+        {/* Filter Toolbar: Tuần vs Tất cả */}
+        <div className="px-5 py-3 bg-zinc-50/70 dark:bg-zinc-900/60 border-b border-zinc-100 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+          <div className="flex items-center p-1 bg-zinc-200/60 dark:bg-zinc-800 rounded-xl">
+            <button
+              onClick={() => {
+                setTimeRange("week");
+              }}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                timeRange === "week"
+                  ? "bg-white dark:bg-zinc-700 text-amber-600 dark:text-amber-300 shadow-xs"
+                  : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Theo tuần ({activeEvents.length} sự kiện)</span>
+            </button>
+            <button
+              onClick={() => {
+                setTimeRange("all");
+              }}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                timeRange === "all"
+                  ? "bg-white dark:bg-zinc-700 text-amber-600 dark:text-amber-300 shadow-xs"
+                  : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+              }`}
+            >
+              <span>Tất cả sự kiện ({events.length})</span>
+            </button>
+          </div>
+
+          {timeRange === "week" && (
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => {
+                  setSelectedWeekDate(
+                    new Date(selectedWeekDate.getTime() - 7 * 24 * 3600 * 1000)
+                  );
+                }}
+                className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer"
+                title="Tuần trước"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <div className="px-2.5 py-1 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 font-bold text-zinc-700 dark:text-zinc-200 flex items-center gap-1.5 shadow-2xs">
+                <span>Tuần: {weekLabel}</span>
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedWeekDate(
+                    new Date(selectedWeekDate.getTime() + 7 * 24 * 3600 * 1000)
+                  );
+                }}
+                className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer"
+                title="Tuần sau"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedWeekDate(currentDate || new Date());
+                }}
+                className="px-2 py-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer ml-1"
+              >
+                Tuần này
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Content Area */}

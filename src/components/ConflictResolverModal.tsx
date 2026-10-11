@@ -12,6 +12,12 @@ import {
 import { ConflictItem, ConflictResolutionOption, ScheduleItem } from '../types/schedule';
 import { resolveScheduleConflictWithAI, ConflictResult } from '../services/aiService';
 
+import {
+  getMondayOfWeek,
+  getSundayOfWeek,
+  isEventInWeek,
+} from '../utils/dateUtils';
+
 interface ConflictResolverModalProps {
   isOpen: boolean;
   conflict: ConflictItem | null;
@@ -45,10 +51,18 @@ export const ConflictResolverModal: React.FC<ConflictResolverModalProps> = ({
     setIsLoading(true);
     setErrorMsg(null);
     try {
+      // Scope surrounding events to the week of the conflict to ensure accurate slot finding
+      const conflictDate = new Date(conflict.eventA.startTime);
+      const monday = getMondayOfWeek(conflictDate);
+      const sunday = getSundayOfWeek(monday);
+      const surroundingWeekEvents = allEvents.filter((e) =>
+        isEventInWeek(e.startTime, e.endTime, monday, sunday)
+      );
+
       const res = await resolveScheduleConflictWithAI(
         conflict.eventA,
         conflict.eventB,
-        allEvents
+        surroundingWeekEvents.length > 0 ? surroundingWeekEvents : allEvents
       );
       setResult(res);
     } catch (e: any) {

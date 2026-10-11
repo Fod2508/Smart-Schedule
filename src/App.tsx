@@ -73,6 +73,11 @@ import { SmartRescheduleModal } from "./components/SmartRescheduleModal";
 import { EnergyMatcherModal } from "./components/EnergyMatcherModal";
 import { TravelBufferModal } from "./components/TravelBufferModal";
 import { CommandPalette } from "./components/CommandPalette";
+import {
+  getMondayOfWeek,
+  getSundayOfWeek,
+  isEventInWeek,
+} from "./utils/dateUtils";
 
 export default function App() {
   // Auth state
@@ -145,6 +150,14 @@ export default function App() {
     }
     return [];
   });
+
+  const currentWeekEvents = useMemo(() => {
+    const monday = getMondayOfWeek(currentDate);
+    const sunday = getSundayOfWeek(monday);
+    return events.filter((e) =>
+      isEventInWeek(e.startTime, e.endTime, monday, sunday)
+    );
+  }, [events, currentDate]);
 
   // Google Calendar state
   const [calendars, setCalendars] = useState<GoogleCalendar[]>([]);
@@ -1278,7 +1291,7 @@ export default function App() {
         {/* Gemini AI Natural Language Input */}
         <NaturalLanguageInput
           uiTheme={uiTheme}
-          currentEvents={events}
+          currentEvents={currentWeekEvents}
           userProfile={userProfile}
           onUpdateProfile={(partial) =>
             setUserProfile((prev) => ({ ...prev, ...partial }))
@@ -1499,6 +1512,7 @@ export default function App() {
         userEmail={userProfile.email}
         userName={userProfile.name}
         accessToken={accessToken}
+        currentDate={currentDate}
         onConnectGoogle={() => handleLogin()}
         onRequestConfirmSend={(onConfirmSend, details) => {
           setConfirmConfig({
@@ -1560,6 +1574,7 @@ export default function App() {
         isOpen={isTeamMeetingOpen}
         onClose={() => setIsTeamMeetingOpen(false)}
         currentEvents={events}
+        currentDate={currentDate}
         weekStart={currentDate.toISOString()}
         onScheduleMeeting={handleScheduleTeamMeeting}
       />
@@ -1598,6 +1613,7 @@ export default function App() {
         isOpen={isTravelBufferOpen}
         onClose={() => setIsTravelBufferOpen(false)}
         events={events}
+        currentDate={currentDate}
         onApplyBuffers={(newEvents) => {
           setEvents(newEvents);
           saveLocalSchedule(newEvents);

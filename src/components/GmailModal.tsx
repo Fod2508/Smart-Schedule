@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   X,
   Mail,
@@ -7,10 +7,18 @@ import {
   CheckCircle2,
   Sparkles,
   Calendar,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { ScheduleItem } from '../types/schedule';
 import { generateEmailSummaryWithAI, EmailSummaryResult } from '../services/aiService';
 import { sendScheduleEmail } from '../services/gmailApi';
+import {
+  getMondayOfWeek,
+  getSundayOfWeek,
+  formatWeekRange,
+  isEventInWeek,
+} from '../utils/dateUtils';
 
 interface GmailModalProps {
   isOpen: boolean;
@@ -19,6 +27,7 @@ interface GmailModalProps {
   userEmail: string;
   userName: string;
   accessToken: string | null;
+  currentDate?: Date;
   onConnectGoogle: () => void;
   onRequestConfirmSend: (onConfirm: () => Promise<void>, details: string) => void;
 }
@@ -30,16 +39,36 @@ export const GmailModal: React.FC<GmailModalProps> = ({
   userEmail,
   userName,
   accessToken,
+  currentDate,
   onConnectGoogle,
   onRequestConfirmSend,
 }) => {
   const [period, setPeriod] = useState<'today' | 'week'>('today');
+  const [selectedWeekDate, setSelectedWeekDate] = useState<Date>(
+    () => currentDate || new Date()
+  );
   const [recipient, setRecipient] = useState(userEmail || '');
   const [isGenerating, setIsGenerating] = useState(false);
   const [emailData, setEmailData] = useState<EmailSummaryResult | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [isSent, setIsSent] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const targetDate = currentDate || new Date();
+  const monday = useMemo(() => getMondayOfWeek(selectedWeekDate), [selectedWeekDate]);
+  const sunday = useMemo(() => getSundayOfWeek(monday), [monday]);
+  const weekLabel = useMemo(() => formatWeekRange(monday, sunday), [monday, sunday]);
+
+  // Scoped events based on period
+  const scopedEvents = useMemo(() => {
+    if (period === 'today') {
+      return events.filter((e) => {
+        const d = new Date(e.startTime);
+        return d.toDateString() === targetDate.toDateString();
+      });
+    }
+    return events.filter((e) => isEventInWeek(e.startTime, e.endTime, monday, sunday));
+  }, [events, period, targetDate, monday, sunday]);
 
   if (!isOpen) return null;
 
@@ -49,17 +78,16 @@ export const GmailModal: React.FC<GmailModalProps> = ({
     setIsSent(false);
 
     try {
-      const filteredEvents =
-        period === 'today'
-          ? events.filter((e) => {
-              const d = new Date(e.startTime);
-              const now = new Date();
-              return d.toDateString() === now.toDateString();
-            })
-          : events;
+      if (scopedEvents.length === 0) {
+        throw new Error(
+          period === 'today'
+            ? 'Không có sự kiện nào trong ngày hôm nay để tóm tắt.'
+            : `Không có sự kiện nào trong tuần (${weekLabel}) để tóm tắt.`
+        );
+      }
 
       const res = await generateEmailSummaryWithAI(
-        filteredEvents.length > 0 ? filteredEvents : events,
+        scopedEvents,
         period,
         userName || 'Bạn'
       );
@@ -111,13 +139,13 @@ export const GmailModal: React.FC<GmailModalProps> = ({
                 Tổng hợp lịch & Gửi qua Gmail
               </h3>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                Gemini AI soạn thảo email thông báo lịch trình hàng ngày/hàng tuần gửi đến hòm thư
+                Gemini AI soạn thảo email thông báo lịch trình hàng ngày hoặc hàng tuần gửi đến hòm thư
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -140,10 +168,13 @@ export const GmailModal: React.FC<GmailModalProps> = ({
               <div className="flex p-1 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-xs">
                 <button
                   type="button"
-                  onClick={() => setPeriod('today')}
-                  className={`flex-1 py-1.5 rounded-lg font-medium transition ${
+                  onClick={() => {
+                    setPeriod('today');
+                    setEmailData(null);
+                  }}
+                  className={`flex-1 py-1.5 rounded-lg font-medium transition cursor-pointer ${
                     period === 'today'
-                      ? 'bg-white dark:bg-zinc-700 text-rose-600 dark:text-rose-400 shadow-xs'
+                      ? 'bg-white dark:bg-zinc-700 text-rose-600 dark:text-rose-400 shadow-xs font-bold'
                       : 'text-zinc-500'
                   }`}
                 >
@@ -151,14 +182,17 @@ export const GmailModal: React.FC<GmailModalProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPeriod('week')}
-                  className={`flex-1 py-1.5 rounded-lg font-medium transition ${
+                  onClick={() => {
+                    setPeriod('week');
+                    setEmailData(null);
+                  }}
+                  className={`flex-1 py-1.5 rounded-lg font-medium transition cursor-pointer ${
                     period === 'week'
-                      ? 'bg-white dark:bg-zinc-700 text-rose-600 dark:text-rose-400 shadow-xs'
+                      ? 'bg-white dark:bg-zinc-700 text-rose-600 dark:text-rose-400 shadow-xs font-bold'
                       : 'text-zinc-500'
                   }`}
                 >
-                  Lịch Toàn Tuần
+                  Lịch Theo Tuần
                 </button>
               </div>
             </div>
@@ -177,16 +211,49 @@ export const GmailModal: React.FC<GmailModalProps> = ({
             </div>
           </div>
 
+          {/* Week navigator if period === 'week' */}
+          {period === 'week' && (
+            <div className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 text-xs">
+              <span className="font-semibold text-zinc-600 dark:text-zinc-300">
+                Tuần: {weekLabel} ({scopedEvents.length} sự kiện)
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedWeekDate(new Date(selectedWeekDate.getTime() - 7 * 86400000));
+                    setEmailData(null);
+                  }}
+                  className="p-1 rounded-lg border border-zinc-200 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition"
+                  title="Tuần trước"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedWeekDate(new Date(selectedWeekDate.getTime() + 7 * 86400000));
+                    setEmailData(null);
+                  }}
+                  className="p-1 rounded-lg border border-zinc-200 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition"
+                  title="Tuần sau"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Generate button */}
           {!emailData && (
             <div className="py-6 text-center space-y-3">
               <p className="text-xs text-zinc-500">
-                Nhấp vào nút bên dưới để Gemini AI đọc {events.length} sự kiện và tự động tạo email tóm tắt hoàn chỉnh kèm link Google Meet và các việc cần ưu tiên.
+                Gemini AI sẽ đọc {scopedEvents.length} sự kiện {period === 'today' ? 'hôm nay' : `trong tuần (${weekLabel})`} và tự động tạo email tóm tắt hoàn chỉnh kèm link Google Meet và các việc cần ưu tiên.
               </p>
               <button
                 type="button"
                 onClick={handleGenerate}
-                disabled={isGenerating}
+                disabled={isGenerating || scopedEvents.length === 0}
                 className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-xs transition inline-flex items-center gap-2 cursor-pointer"
               >
                 {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
@@ -219,7 +286,7 @@ export const GmailModal: React.FC<GmailModalProps> = ({
                     type="button"
                     onClick={handleGenerate}
                     disabled={isGenerating}
-                    className="text-xs text-rose-600 hover:underline"
+                    className="text-xs text-rose-600 hover:underline cursor-pointer"
                   >
                     Soạn lại
                   </button>
@@ -242,7 +309,7 @@ export const GmailModal: React.FC<GmailModalProps> = ({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl"
+                  className="px-4 py-2 text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl cursor-pointer"
                 >
                   Đóng
                 </button>

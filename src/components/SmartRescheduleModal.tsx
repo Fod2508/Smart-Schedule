@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   X,
   FastForward,
@@ -22,6 +22,14 @@ import {
   SmartRescheduleResult,
   RescheduleChange,
 } from "../services/aiService";
+import {
+  getMondayOfWeek,
+  getSundayOfWeek,
+  formatWeekRange,
+  isEventInWeek,
+  formatDateTimeShort,
+  formatTimeShort,
+} from "../utils/dateUtils";
 
 interface SmartRescheduleModalProps {
   isOpen: boolean;
@@ -43,6 +51,7 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
   targetDate,
   onApplyRescheduledEvents,
 }) => {
+  const [timeScope, setTimeScope] = useState<"week" | "day" | "all">("week");
   const [selectedEventId, setSelectedEventId] = useState<string>(
     preselectedEventId || "",
   );
@@ -58,13 +67,36 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
   const [result, setResult] = useState<SmartRescheduleResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const targetDateObj = useMemo(() => new Date(targetDate), [targetDate]);
+  const monday = useMemo(() => getMondayOfWeek(targetDateObj), [targetDateObj]);
+  const sunday = useMemo(() => getSundayOfWeek(monday), [monday]);
+  const weekLabel = useMemo(() => formatWeekRange(monday, sunday), [monday, sunday]);
+
+  // Scoped events based on timeScope
+  const scopedEvents = useMemo(() => {
+    let filtered = currentEvents;
+    if (timeScope === "week") {
+      filtered = currentEvents.filter((e) =>
+        isEventInWeek(e.startTime, e.endTime, monday, sunday)
+      );
+    } else if (timeScope === "day") {
+      filtered = currentEvents.filter((e) => {
+        const d = new Date(e.startTime);
+        return d.toDateString() === targetDateObj.toDateString();
+      });
+    }
+    return [...filtered].sort(
+      (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+    );
+  }, [currentEvents, timeScope, monday, sunday, targetDateObj]);
+
   useEffect(() => {
     if (preselectedEventId) {
       setSelectedEventId(preselectedEventId);
-    } else if (currentEvents.length > 0 && !selectedEventId) {
-      setSelectedEventId(currentEvents[0].id);
+    } else if (scopedEvents.length > 0 && !selectedEventId) {
+      setSelectedEventId(scopedEvents[0].id);
     }
-  }, [preselectedEventId, currentEvents]);
+  }, [preselectedEventId, scopedEvents]);
 
   if (!isOpen) return null;
 
@@ -85,7 +117,7 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
         delayMinutes,
         reason.trim(),
         strategy,
-        currentEvents,
+        scopedEvents.length > 0 ? scopedEvents : currentEvents,
         targetDate,
       );
       setResult(res);
@@ -99,7 +131,14 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
 
   const handleConfirmApply = () => {
     if (!result) return;
-    onApplyRescheduledEvents(result.updatedEvents, result.impactSummary);
+    // Merge updated events into full list, protecting other weeks
+    const updatedMap = new Map(result.updatedEvents.map((e) => [e.id, e]));
+    const merged = currentEvents.map((e) =>
+      updatedMap.has(e.id) ? updatedMap.get(e.id)! : e
+    );
+    const existingIds = new Set(currentEvents.map((e) => e.id));
+    const newItems = result.updatedEvents.filter((e) => !existingIds.has(e.id));
+    onApplyRescheduledEvents([...merged, ...newItems], result.impactSummary);
     onClose();
   };
 
@@ -183,9 +222,47 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
           <div className="space-y-3.5">
             {/* 1. Chọn sự kiện bị kéo dài */}
             <div>
-              <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                Công việc đang bị kéo dài hoặc trễ giờ *
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                  Công việc đang bị kéo dài hoặc trễ giờ *
+                </label>
+                <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-lg text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setTimeScope("week")}
+                    className={`px-2 py-0.5 rounded font-medium transition cursor-pointer ${
+                      timeScope === "week"
+                        ? "bg-white dark:bg-zinc-700 text-amber-600 dark:text-amber-300 font-bold shadow-2xs"
+                        : "text-zinc-500 hover:text-zinc-700"
+                    }`}
+                  >
+                    Tuần này ({weekLabel})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTimeScope("day")}
+                    className={`px-2 py-0.5 rounded font-medium transition cursor-pointer ${
+                      timeScope === "day"
+                        ? "bg-white dark:bg-zinc-700 text-amber-600 dark:text-amber-300 font-bold shadow-2xs"
+                        : "text-zinc-500 hover:text-zinc-700"
+                    }`}
+                  >
+                    Trong ngày
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTimeScope("all")}
+                    className={`px-2 py-0.5 rounded font-medium transition cursor-pointer ${
+                      timeScope === "all"
+                        ? "bg-white dark:bg-zinc-700 text-amber-600 dark:text-amber-300 font-bold shadow-2xs"
+                        : "text-zinc-500 hover:text-zinc-700"
+                    }`}
+                  >
+                    Tất cả ({currentEvents.length})
+                  </button>
+                </div>
+              </div>
+
               <select
                 value={selectedEventId}
                 onChange={(e) => setSelectedEventId(e.target.value)}
@@ -194,21 +271,9 @@ export const SmartRescheduleModal: React.FC<SmartRescheduleModalProps> = ({
                 <option value="">
                   -- Trễ từ mốc thời gian hiện tại (không gắn sự kiện cụ thể) --
                 </option>
-                {currentEvents.map((ev) => {
-                  const sTime = new Date(ev.startTime).toLocaleTimeString(
-                    "vi-VN",
-                    {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    },
-                  );
-                  const eTime = new Date(ev.endTime).toLocaleTimeString(
-                    "vi-VN",
-                    {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    },
-                  );
+                {scopedEvents.map((ev) => {
+                  const sTime = formatDateTimeShort(ev.startTime);
+                  const eTime = formatTimeShort(ev.endTime);
                   return (
                     <option key={ev.id} value={ev.id}>
                       {ev.title} ({sTime} - {eTime})
