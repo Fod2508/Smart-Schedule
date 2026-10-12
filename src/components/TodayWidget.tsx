@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import confetti from "canvas-confetti";
 import {
   Calendar,
@@ -18,6 +18,12 @@ import {
   Navigation,
 } from "lucide-react";
 import { ScheduleItem, UiTheme } from "../types/schedule";
+import {
+  getMondayOfWeek,
+  getSundayOfWeek,
+  isEventInWeek,
+  formatWeekRange,
+} from "../utils/dateUtils";
 
 interface TodayWidgetProps {
   events: ScheduleItem[];
@@ -38,6 +44,8 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
   onOpenTravelBuffer,
   uiTheme = "cute",
 }) => {
+  const [viewScope, setViewScope] = useState<"today" | "week">("today");
+
   const getCategoryVectorIcon = (category: string) => {
     switch (category) {
       case "study": return BookOpen;
@@ -53,26 +61,32 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const todayStr = localDateStr(today);
 
-  const todayEvents = events
-    .filter((e) => {
-      const d = new Date(e.startTime);
-      return localDateStr(d) === todayStr;
-    })
-    .sort(
-      (a, b) =>
-        new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
-    );
+  const monday = getMondayOfWeek(today);
+  const sunday = getSundayOfWeek(monday);
 
-  const completedCount = todayEvents.filter((e) => e.isCompleted).length;
+  const displayEvents = React.useMemo(() => {
+    let filtered = events;
+    if (viewScope === "today") {
+      filtered = filtered.filter((e) => localDateStr(new Date(e.startTime)) === todayStr);
+    } else {
+      filtered = filtered.filter((e) => isEventInWeek(e.startTime, e.endTime, monday, sunday));
+    }
+    return filtered.slice().sort(
+      (a, b) =>
+        new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+    );
+  }, [events, viewScope, todayStr, monday, sunday]);
+
+  const completedCount = displayEvents.filter((e) => e.isCompleted).length;
   const progressPercent =
-    todayEvents.length > 0
-      ? Math.round((completedCount / todayEvents.length) * 100)
+    displayEvents.length > 0
+      ? Math.round((completedCount / displayEvents.length) * 100)
       : 0;
 
   const handleCheckTask = (eventId: string, currentCompleted?: boolean) => {
     onToggleComplete(eventId);
     // Nếu hoàn thành nhiệm vụ và sắp đạt 100%
-    if (!currentCompleted && completedCount + 1 === todayEvents.length) {
+    if (!currentCompleted && completedCount + 1 === displayEvents.length) {
       confetti({
         particleCount: 80,
         spread: 70,
@@ -83,7 +97,7 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
 
   // Find next upcoming event
   const nowTime = today.getTime();
-  const nextEvent = todayEvents.find(
+  const nextEvent = displayEvents.find(
     (e) => new Date(e.endTime).getTime() > nowTime,
   );
 
@@ -96,30 +110,59 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
               <span className="text-base select-none">🗓️</span>
             </div>
             <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1">
-              <span>Lịch hôm nay</span>
+              <span>{viewScope === "today" ? "Lịch hôm nay" : "Lịch tuần này"}</span>
               <span className="text-xs font-normal text-zinc-400">
-                ({today.toLocaleDateString("vi-VN", {
-                  weekday: "short",
-                  day: "2-digit",
-                  month: "2-digit",
-                })})
+                {viewScope === "today"
+                  ? `(${today.toLocaleDateString("vi-VN", {
+                      weekday: "short",
+                      day: "2-digit",
+                      month: "2-digit",
+                    })})`
+                  : `(${formatWeekRange(monday, sunday)})`}
               </span>
             </h3>
           </div>
-          <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-pink-50 dark:bg-pink-950/60 text-pink-600 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/80">
-            {todayEvents.length} việc 🌸
-          </span>
+
+          <div className="flex items-center gap-1.5">
+            <div className="flex items-center p-0.5 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-[10px] font-bold">
+              <button
+                type="button"
+                onClick={() => setViewScope("today")}
+                className={`px-2 py-0.5 rounded-lg transition-all cursor-pointer ${
+                  viewScope === "today"
+                    ? "bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-300 shadow-2xs"
+                    : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                }`}
+              >
+                Hôm nay
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewScope("week")}
+                className={`px-2 py-0.5 rounded-lg transition-all cursor-pointer ${
+                  viewScope === "week"
+                    ? "bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-300 shadow-2xs"
+                    : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                }`}
+              >
+                Tuần này
+              </button>
+            </div>
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-pink-50 dark:bg-pink-950/60 text-pink-600 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800/80 shrink-0">
+              {displayEvents.length} việc 🌸
+            </span>
+          </div>
         </div>
 
         {/* Progress Bar with Shimmer Flow Wave */}
-        {todayEvents.length > 0 && (
+        {displayEvents.length > 0 && (
           <div className="mt-3 bg-zinc-50/80 dark:bg-zinc-800/40 p-3 rounded-2xl border border-zinc-100 dark:border-zinc-800/80">
             <div className="flex items-center justify-between text-[11px] mb-1.5">
               <span className="text-zinc-500 dark:text-zinc-400 font-medium flex items-center gap-1">
                 <span>⭐</span> Tiến độ hoàn thành
               </span>
               <span className="font-bold text-indigo-600 dark:text-indigo-400">
-                {completedCount}/{todayEvents.length} việc ({progressPercent}%)
+                {completedCount}/{displayEvents.length} việc ({progressPercent}%)
               </span>
             </div>
             <div className="w-full h-2.5 bg-zinc-200/70 dark:bg-zinc-700/60 rounded-full overflow-hidden p-0.5">
@@ -139,6 +182,11 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
                 <span className="animate-star-twinkle">✨</span> Việc tiếp theo cần chú ý
               </span>
               <span className="px-1.5 py-0.2 rounded-md bg-indigo-100 dark:bg-indigo-950 font-bold">
+                {viewScope === "week" && (
+                  <span className="mr-1">
+                    {new Date(nextEvent.startTime).toLocaleDateString("vi-VN", { weekday: "short" })}{" "}
+                  </span>
+                )}
                 {new Date(nextEvent.startTime).toLocaleTimeString("vi-VN", {
                   hour: "2-digit",
                   minute: "2-digit",
@@ -185,7 +233,7 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
                   href={nextEvent.meetLink || "https://meet.google.com/new"}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 transition btn-chubby-emerald"
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 transition btn-chubby-emerald"
                 >
                   <Video className="w-3 h-3" />
                   <span>Google Meet</span>
@@ -198,7 +246,7 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
           <div className="mt-3 p-4 rounded-3xl bg-gradient-to-br from-pink-50/70 via-purple-50/50 to-indigo-50/60 dark:from-pink-950/20 dark:via-purple-950/20 dark:to-indigo-950/30 border border-pink-200/60 dark:border-pink-900/40 text-center text-xs space-y-2">
             <div className="flex justify-center">
               {uiTheme === "yohan" ? (
-                todayEvents.length > 0 && completedCount === todayEvents.length ? (
+                displayEvents.length > 0 && completedCount === displayEvents.length ? (
                   <img
                     src="/illustrations/yohan/yohan_cheering.png"
                     alt="Go Yohan Cheering"
@@ -231,29 +279,28 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
             </div>
             <div className="font-bold text-zinc-800 dark:text-zinc-200 text-sm">
               {uiTheme === "yohan"
-                ? todayEvents.length > 0 && completedCount === todayEvents.length
-                  ? "Go Yohan: Giỏi lắm! Hoàn thành hết 100% rồi! 🥛"
-                  : "Go Yohan: Hôm nay bạn thảnh thơi rồi nè 🌸"
+                ? displayEvents.length > 0 && completedCount === displayEvents.length
+                  ? `Go Yohan: Giỏi lắm! Hoàn thành hết 100% ${viewScope === "today" ? "hôm nay" : "tuần này"} rồi! 🥛`
+                  : `Go Yohan: ${viewScope === "today" ? "Hôm nay" : "Tuần này"} bạn thảnh thơi rồi nè 🌸`
                 : uiTheme === "cute"
-                  ? "Hôm nay bạn đã thảnh thơi rồi!"
-                  : "Không còn lịch trình hôm nay"}
+                  ? `${viewScope === "today" ? "Hôm nay" : "Tuần này"} bạn đã thảnh thơi rồi!`
+                  : `Không còn lịch trình ${viewScope === "today" ? "hôm nay" : "tuần này"}`}
             </div>
             <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
               {uiTheme === "yohan"
-                ? todayEvents.length > 0 && completedCount === todayEvents.length
-                  ? "Đã hoàn thành tất cả nhiệm vụ trong ngày. Tự thưởng một ly cà phê ấm nhé!"
+                ? displayEvents.length > 0 && completedCount === displayEvents.length
+                  ? `Đã hoàn thành tất cả nhiệm vụ trong ${viewScope === "today" ? "ngày" : "tuần"}. Tự thưởng một ly cà phê ấm nhé!`
                   : "Chưa có thêm lịch trình, thư giãn ôm gối hoặc lên kế hoạch mới cùng Yohan nhé~"
                 : uiTheme === "cute"
                   ? "Không còn lịch nào cả, nhâm nhi ly trà sữa và nghỉ ngơi bạn nha~ ✨"
-                  : "Tất cả các công việc trong ngày đã hoàn thành hoặc chưa có lịch mới."}
+                  : `Tất cả các công việc trong ${viewScope === "today" ? "ngày" : "tuần"} đã hoàn thành hoặc chưa có lịch mới.`}
             </div>
           </div>
         )}
 
-        {/* Today's list */}
+        {/* Task list */}
         <div className="mt-3 space-y-1.5 max-h-52 overflow-y-auto pr-1">
-          {" "}
-          {todayEvents.map((ev) => {
+          {displayEvents.map((ev) => {
             const start = new Date(ev.startTime);
             const end = new Date(ev.endTime);
 
@@ -281,6 +328,11 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
                   <div className="flex items-center gap-1 shrink-0 text-[10px] text-amber-800 dark:text-amber-300 font-medium">
                     <Clock className="w-3 h-3" />
                     <span>
+                      {viewScope === "week" && (
+                        <strong className="mr-1">
+                          {start.toLocaleDateString("vi-VN", { weekday: "short", day: "2-digit", month: "2-digit" })} •
+                        </strong>
+                      )}
                       {start.toLocaleTimeString("vi-VN", {
                         hour: "2-digit",
                         minute: "2-digit",
@@ -354,6 +406,11 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
                 <div className="flex items-center gap-1.5 shrink-0 text-[10px] text-zinc-400 font-medium">
                   <Clock className="w-3 h-3" />
                   <span>
+                    {viewScope === "week" && (
+                      <strong className="text-indigo-600 dark:text-indigo-400 mr-1">
+                        {start.toLocaleDateString("vi-VN", { weekday: "short", day: "2-digit", month: "2-digit" })} •
+                      </strong>
+                    )}
                     {start.toLocaleTimeString("vi-VN", {
                       hour: "2-digit",
                       minute: "2-digit",

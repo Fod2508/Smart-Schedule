@@ -32,6 +32,7 @@ import {
   Minimize2,
 } from "lucide-react";
 import { ScheduleItem, ConflictItem, Chronotype, UiTheme } from "../types/schedule";
+import { formatWeekRange, getSundayOfWeek } from "../utils/dateUtils";
 import { CuteCalendarFrame } from "./CuteCalendarFrame";
 import { CapybaraCalendarFrame } from "./CapybaraCalendarFrame";
 import { YohanCalendarFrame } from "./YohanCalendarFrame";
@@ -173,6 +174,8 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
   };
 
   const weekStart = getMonday(currentDate);
+  const weekEnd = React.useMemo(() => getSundayOfWeek(weekStart), [weekStart]);
+  const [agendaScope, setAgendaScope] = useState<"week" | "all">("week");
 
   // Generate 7 days of the week
   const weekDays = Array.from({ length: 7 }, (_, i) => {
@@ -414,10 +417,26 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
     { id: "travel", label: "Di chuyển", iconImg: "/illustrations/badge_travel.jpg", emoji: "🛵", vectorIcon: Navigation },
   ];
 
+  const weekEvents = React.useMemo(() => {
+    return events.filter((e) => {
+      const s = new Date(e.startTime).getTime();
+      const end = new Date(e.endTime).getTime();
+      return s <= weekEnd.getTime() && end >= weekStart.getTime();
+    });
+  }, [events, weekStart, weekEnd]);
+
+  const targetScopeEvents = React.useMemo(() => {
+    if (viewMode === "agenda" && agendaScope === "all") {
+      return events;
+    }
+    return weekEvents;
+  }, [viewMode, agendaScope, events, weekEvents]);
+
   const getCategoryCount = (catId: string) => {
-    if (catId === "all") return events.length;
-    if (catId === "travel") return events.filter((e) => e.isTravelBuffer || e.transitMode).length;
-    return events.filter((e) => e.category === catId && !e.isTravelBuffer).length;
+    const list = targetScopeEvents;
+    if (catId === "all") return list.length;
+    if (catId === "travel") return list.filter((e) => e.isTravelBuffer || e.transitMode).length;
+    return list.filter((e) => e.category === catId && !e.isTravelBuffer).length;
   };
 
   const filteredEvents = React.useMemo(() => {
@@ -427,6 +446,38 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
     }
     return events.filter((e) => e.category === selectedCategoryFilter && !e.isTravelBuffer);
   }, [events, selectedCategoryFilter]);
+
+  const agendaEvents = React.useMemo(() => {
+    let list = filteredEvents;
+    if (agendaScope === "week") {
+      list = list.filter((e) => {
+        const s = new Date(e.startTime).getTime();
+        const end = new Date(e.endTime).getTime();
+        return s <= weekEnd.getTime() && end >= weekStart.getTime();
+      });
+    }
+    return list.slice().sort(
+      (a, b) =>
+        new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+    );
+  }, [filteredEvents, agendaScope, weekStart, weekEnd]);
+
+  const groupedAgendaEvents = React.useMemo(() => {
+    const map = new Map<string, { date: Date; events: ScheduleItem[] }>();
+    agendaEvents.forEach((ev) => {
+      const d = new Date(ev.startTime);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      if (!map.has(key)) {
+        map.set(key, { date: d, events: [] });
+      }
+      map.get(key)!.events.push(ev);
+    });
+    return Array.from(map.entries()).map(([key, val]) => ({
+      dateKey: key,
+      date: val.date,
+      events: val.events,
+    }));
+  }, [agendaEvents]);
 
   // Format month and year label
   const headerDateLabel = weekStart.toLocaleDateString("vi-VN", {
@@ -720,9 +771,49 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.15 }}
-            className="p-4 sm:p-6 divide-y divide-zinc-100 dark:divide-zinc-800 max-h-[680px] overflow-y-auto"
+            className="p-4 sm:p-6 max-h-[680px] overflow-y-auto"
           >
-            {filteredEvents.length === 0 ? (
+            {/* Agenda Scope Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-zinc-200/80 dark:border-zinc-800">
+              <div className="flex items-center gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-800/90 rounded-2xl text-xs">
+                <button
+                  type="button"
+                  onClick={() => setAgendaScope("week")}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    agendaScope === "week"
+                      ? "bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-300 shadow-xs scale-102"
+                      : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+                  }`}
+                >
+                  <span>📅</span>
+                  <span>Theo tuần này ({formatWeekRange(weekStart, weekEnd)})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAgendaScope("all")}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    agendaScope === "all"
+                      ? "bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-300 shadow-xs scale-102"
+                      : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+                  }`}
+                >
+                  <span>🌐</span>
+                  <span>Tất cả đầu việc</span>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                <span className="font-bold text-zinc-800 dark:text-zinc-200">
+                  {agendaEvents.length} công việc
+                </span>
+                <span>•</span>
+                <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                  {agendaEvents.filter((e) => e.isCompleted).length} đã hoàn thành
+                </span>
+              </div>
+            </div>
+
+            {agendaEvents.length === 0 ? (
               <div className="text-center py-12 px-4 space-y-3">
                 {uiTheme === "yohan" ? (
                   <div className="relative inline-block">
@@ -753,228 +844,270 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
                   </div>
                 )}
                 <p className="font-bold text-zinc-700 dark:text-zinc-300 text-sm">
-                  {selectedCategoryFilter === "all"
-                    ? "Chưa có lịch trình nào trong tuần này"
-                    : `Không có sự kiện nào thuộc mục "${categoryFilters.find((c) => c.id === selectedCategoryFilter)?.label}"`}
+                  {agendaScope === "week"
+                    ? `Chưa có công việc nào trong tuần này (${formatWeekRange(weekStart, weekEnd)})`
+                    : selectedCategoryFilter === "all"
+                      ? "Chưa có công việc nào trong danh sách"
+                      : `Không có sự kiện nào thuộc mục "${categoryFilters.find((c) => c.id === selectedCategoryFilter)?.label}"`}
                 </p>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-sm mx-auto">
-                  Bấm vào khung giờ để thêm sự kiện hoặc nhấn nút bên dưới để đồng bộ tất cả với Google Calendar!
+                  {agendaScope === "week"
+                    ? "Dùng nút mũi tên ở trên để duyệt tuần khác, hoặc bấm nút bên dưới để xem toàn bộ danh sách công việc!"
+                    : "Bấm vào khung giờ trên lưới lịch để thêm sự kiện hoặc nhấn nút bên dưới để đồng bộ tất cả với Google Calendar!"}
                 </p>
-                {onSyncGoogleCalendar && (
-                  <button
-                    type="button"
-                    onClick={onSyncGoogleCalendar}
-                    disabled={isSyncing}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer disabled:opacity-60"
-                  >
-                    <RotateCw className={`w-4 h-4 ${isSyncing ? "animate-spin" : ""}`} />
-                    <span>{isSyncing ? "Đang đồng bộ..." : "Đồng bộ tất cả qua Google Calendar"}</span>
-                  </button>
-                )}
+                <div className="flex items-center justify-center gap-2 pt-1 flex-wrap">
+                  {agendaScope === "week" && (
+                    <button
+                      type="button"
+                      onClick={() => setAgendaScope("all")}
+                      className="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 font-bold text-xs shadow-2xs transition-all cursor-pointer"
+                    >
+                      <span>🌐</span>
+                      <span>Xem tất cả đầu việc</span>
+                    </button>
+                  )}
+                  {onSyncGoogleCalendar && (
+                    <button
+                      type="button"
+                      onClick={onSyncGoogleCalendar}
+                      disabled={isSyncing}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer disabled:opacity-60"
+                    >
+                      <RotateCw className={`w-4 h-4 ${isSyncing ? "animate-spin" : ""}`} />
+                      <span>{isSyncing ? "Đang đồng bộ..." : "Đồng bộ qua Google Calendar"}</span>
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
-              filteredEvents
-                .slice()
-                .sort(
-                  (a, b) =>
-                    new Date(a.startTime).getTime() -
-                    new Date(b.startTime).getTime(),
-                )
-                .map((ev) => {
-                  const start = new Date(ev.startTime);
-                  const end = new Date(ev.endTime);
-                  const style =
-                    categoryStyles[ev.category] || categoryStyles.personal;
-                  const conflictInfo = getEventConflict(ev.id);
-
-                  if (ev.isTravelBuffer) {
-                    return (
-                      <div
-                        key={ev.id}
-                        onClick={() => onSelectEvent(ev)}
-                        className="py-2.5 px-3 rounded-2xl border border-dashed border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/30 flex items-center justify-between gap-3 text-xs my-1 cursor-pointer hover:bg-amber-100/60 transition"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          {uiTheme === "cute" ? (
-                            <img
-                              src="/illustrations/badge_travel.jpg"
-                              alt="travel"
-                              className="w-8 h-8 rounded-xl object-cover shadow-2xs border border-amber-300 dark:border-amber-700 shrink-0"
-                            />
-                          ) : (
-                            <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 shrink-0">
-                              <Navigation className="w-4 h-4" />
-                            </div>
-                          )}
-                          <div>
-                            <span className="font-bold text-zinc-900 dark:text-zinc-100">
-                              {ev.title}
-                            </span>
-                            <span className="text-zinc-500 dark:text-zinc-400 block text-[11px] mt-0.5">
-                              {start.toLocaleTimeString("vi-VN", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}{" "}
-                              -{" "}
-                              {end.toLocaleTimeString("vi-VN", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}{" "}
-                              • Đệm di chuyển & Chuẩn bị ({ev.bufferMinutes || 25}{" "}
-                              phút)
-                            </span>
-                          </div>
-                        </div>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300">
-                          🚗 Travel Buffer
-                        </span>
-                      </div>
-                    );
-                  }
+              <div className="space-y-5">
+                {groupedAgendaEvents.map((group) => {
+                  const isGroupToday = isToday(group.date);
+                  const dayName = group.date.toLocaleDateString("vi-VN", {
+                    weekday: "long",
+                  });
+                  const dateFormatted = group.date.toLocaleDateString("vi-VN", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                  });
 
                   return (
-                    <div
-                      key={ev.id}
-                      onClick={() => onSelectEvent(ev)}
-                      className={`py-3 sm:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-3 rounded-2xl transition cursor-pointer ${
-                        conflictInfo
-                          ? "bg-rose-50/80 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800/80 conflict-pulse"
-                          : "hover:bg-zinc-50 dark:hover:bg-zinc-800/40"
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleComplete(ev.id);
-                          }}
-                          className={`mt-1 p-1 rounded-lg transition ${
-                            ev.isCompleted
-                              ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60"
-                              : "text-zinc-400 hover:text-zinc-600"
-                          }`}
-                          title={
-                            ev.isCompleted
-                              ? "Đã hoàn thành"
-                              : "Đánh dấu hoàn thành"
-                          }
-                        >
-                          <CheckCircle className="w-5 h-5" />
-                        </button>
-
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {uiTheme === "cute" ? (
-                              <img
-                                src={style.iconImg}
-                                alt=""
-                                className="w-7 h-7 rounded-xl object-cover shadow-xs border border-white/80 dark:border-zinc-700/80 shrink-0 select-none"
-                              />
-                            ) : (
-                              <div className={`p-1.5 rounded-lg ${style.bg} ${style.text} ${style.border} border shrink-0`}>
-                                <style.vectorIcon className="w-4 h-4" />
-                              </div>
-                            )}
-                            <span
-                              className={`font-bold text-sm ${
-                                ev.isCompleted
-                                  ? "line-through text-zinc-400 dark:text-zinc-500"
-                                  : "text-zinc-900 dark:text-zinc-100"
-                              }`}
-                            >
-                              {ev.title}
+                    <div key={group.dateKey} className="space-y-2">
+                      {/* Day Group Header */}
+                      <div className="flex items-center justify-between pb-2 border-b border-zinc-200/70 dark:border-zinc-800/80">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold capitalize text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                            <CalendarIcon className="w-3.5 h-3.5 text-indigo-500" />
+                            <span>{dayName}, {dateFormatted}</span>
+                          </span>
+                          {isGroupToday && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80">
+                              Hôm nay ⭐
                             </span>
-                            <span
-                              className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${style.bg} ${style.text} border ${style.border}`}
-                            >
-                              {ev.category}
-                            </span>
-                            {conflictInfo && (
-                              <span
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onResolveConflict(conflictInfo.conflict);
-                                }}
-                                className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-600 hover:bg-rose-700 text-white flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
-                                title={`Trùng ${conflictInfo.conflict.overlapMinutes} phút với "${conflictInfo.otherEvent.title}". Bấm để gỡ.`}
-                              >
-                                <span className="relative flex h-1.5 w-1.5 shrink-0">
-                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white"></span>
-                                </span>
-                                <AlertTriangle className="w-3 h-3" />
-                                <span>
-                                  Trùng {conflictInfo.conflict.overlapMinutes}p:{" "}
-                                  {conflictInfo.otherEvent.title}
-                                </span>
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-3 mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3.5 h-3.5 text-zinc-400" />
-                              {start.toLocaleDateString("vi-VN", {
-                                weekday: "short",
-                                day: "2-digit",
-                                month: "2-digit",
-                              })}{" "}
-                              •{" "}
-                              {start.toLocaleTimeString("vi-VN", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}{" "}
-                              -{" "}
-                              {end.toLocaleTimeString("vi-VN", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </span>
-                            {ev.isSyncedToGoogle && (
-                              <span className="text-[10px] text-indigo-500 flex items-center gap-0.5">
-                                • Google Calendar
-                              </span>
-                            )}
-                          </div>
-
-                          {ev.description && (
-                            <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400 line-clamp-1">
-                              {ev.description}
-                            </p>
                           )}
                         </div>
+                        <span className="text-[11px] font-medium text-zinc-400">
+                          {group.events.length} đầu việc
+                        </span>
                       </div>
 
-                      <div className="flex items-center gap-2 self-end sm:self-center">
-                        {conflictInfo && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onResolveConflict(conflictInfo.conflict);
-                            }}
-                            className="px-2.5 py-1 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white flex items-center gap-1 shadow-2xs transition cursor-pointer"
-                          >
-                            <Sparkles className="w-3 h-3" />
-                            <span>Gỡ trùng AI</span>
-                          </button>
-                        )}
-                        {ev.hasMeet && (
-                          <a
-                            href={ev.meetLink || "https://meet.google.com/new"}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="px-2.5 py-1 rounded-xl text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 shadow-2xs transition"
-                          >
-                            <Video className="w-3.5 h-3.5" />
-                            <span>Tham gia Meet</span>
-                            <ExternalLink className="w-3 h-3 opacity-80" />
-                          </a>
-                        )}
+                      {/* Day's Event List */}
+                      <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60 bg-white/40 dark:bg-zinc-900/40 rounded-2xl p-1.5 border border-zinc-100 dark:border-zinc-800/60">
+                        {group.events.map((ev) => {
+                          const start = new Date(ev.startTime);
+                          const end = new Date(ev.endTime);
+                          const style =
+                            categoryStyles[ev.category] || categoryStyles.personal;
+                          const conflictInfo = getEventConflict(ev.id);
+
+                          if (ev.isTravelBuffer) {
+                            return (
+                              <div
+                                key={ev.id}
+                                onClick={() => onSelectEvent(ev)}
+                                className="py-2.5 px-3 rounded-xl border border-dashed border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/30 flex items-center justify-between gap-3 text-xs my-1 cursor-pointer hover:bg-amber-100/60 transition"
+                              >
+                                <div className="flex items-center gap-2.5">
+                                  {uiTheme === "cute" ? (
+                                    <img
+                                      src="/illustrations/badge_travel.jpg"
+                                      alt="travel"
+                                      className="w-8 h-8 rounded-xl object-cover shadow-2xs border border-amber-300 dark:border-amber-700 shrink-0"
+                                    />
+                                  ) : (
+                                    <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 shrink-0">
+                                      <Navigation className="w-4 h-4" />
+                                    </div>
+                                  )}
+                                  <div>
+                                    <span className="font-bold text-zinc-900 dark:text-zinc-100">
+                                      {ev.title}
+                                    </span>
+                                    <span className="text-zinc-500 dark:text-zinc-400 block text-[11px] mt-0.5">
+                                      {start.toLocaleTimeString("vi-VN", {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}{" "}
+                                      -{" "}
+                                      {end.toLocaleTimeString("vi-VN", {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}{" "}
+                                      • Đệm di chuyển & Chuẩn bị ({ev.bufferMinutes || 25}{" "}
+                                      phút)
+                                    </span>
+                                  </div>
+                                </div>
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300">
+                                  🚗 Travel Buffer
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div
+                              key={ev.id}
+                              onClick={() => onSelectEvent(ev)}
+                              className={`py-3 sm:py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-3 rounded-xl transition cursor-pointer ${
+                                conflictInfo
+                                  ? "bg-rose-50/80 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800/80 conflict-pulse"
+                                  : "hover:bg-zinc-100/60 dark:hover:bg-zinc-800/50"
+                              }`}
+                            >
+                              <div className="flex items-start gap-3">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onToggleComplete(ev.id);
+                                  }}
+                                  className={`mt-1 p-1 rounded-lg transition ${
+                                    ev.isCompleted
+                                      ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60"
+                                      : "text-zinc-400 hover:text-zinc-600"
+                                  }`}
+                                  title={
+                                    ev.isCompleted
+                                      ? "Đã hoàn thành"
+                                      : "Đánh dấu hoàn thành"
+                                  }
+                                >
+                                  <CheckCircle className="w-5 h-5" />
+                                </button>
+
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {uiTheme === "cute" ? (
+                                      <img
+                                        src={style.iconImg}
+                                        alt=""
+                                        className="w-7 h-7 rounded-xl object-cover shadow-xs border border-white/80 dark:border-zinc-700/80 shrink-0 select-none"
+                                      />
+                                    ) : (
+                                      <div className={`p-1.5 rounded-lg ${style.bg} ${style.text} ${style.border} border shrink-0`}>
+                                        <style.vectorIcon className="w-4 h-4" />
+                                      </div>
+                                    )}
+                                    <span
+                                      className={`font-bold text-sm ${
+                                        ev.isCompleted
+                                          ? "line-through text-zinc-400 dark:text-zinc-500"
+                                          : "text-zinc-900 dark:text-zinc-100"
+                                      }`}
+                                    >
+                                      {ev.title}
+                                    </span>
+                                    <span
+                                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${style.bg} ${style.text} border ${style.border}`}
+                                    >
+                                      {ev.category}
+                                    </span>
+                                    {conflictInfo && (
+                                      <span
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          onResolveConflict(conflictInfo.conflict);
+                                        }}
+                                        className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-600 hover:bg-rose-700 text-white flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+                                        title={`Trùng ${conflictInfo.conflict.overlapMinutes} phút với "${conflictInfo.otherEvent.title}". Bấm để gỡ.`}
+                                      >
+                                        <span className="relative flex h-1.5 w-1.5 shrink-0">
+                                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white"></span>
+                                        </span>
+                                        <AlertTriangle className="w-3 h-3" />
+                                        <span>
+                                          Trùng {conflictInfo.conflict.overlapMinutes}p:{" "}
+                                          {conflictInfo.otherEvent.title}
+                                        </span>
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center gap-3 mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                                    <span className="flex items-center gap-1">
+                                      <Clock className="w-3.5 h-3.5 text-zinc-400" />
+                                      {start.toLocaleTimeString("vi-VN", {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}{" "}
+                                      -{" "}
+                                      {end.toLocaleTimeString("vi-VN", {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}
+                                    </span>
+                                    {ev.isSyncedToGoogle && (
+                                      <span className="text-[10px] text-indigo-500 flex items-center gap-0.5">
+                                        • Google Calendar
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {ev.description && (
+                                    <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400 line-clamp-1">
+                                      {ev.description}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 self-end sm:self-center">
+                                {conflictInfo && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onResolveConflict(conflictInfo.conflict);
+                                    }}
+                                    className="px-2.5 py-1 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                                  >
+                                    <Sparkles className="w-3 h-3" />
+                                    <span>Gỡ trùng AI</span>
+                                  </button>
+                                )}
+                                {ev.hasMeet && (
+                                  <a
+                                    href={ev.meetLink || "https://meet.google.com/new"}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="px-2.5 py-1 rounded-xl text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 shadow-2xs transition"
+                                  >
+                                    <Video className="w-3.5 h-3.5" />
+                                    <span>Tham gia Meet</span>
+                                    <ExternalLink className="w-3 h-3 opacity-80" />
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   );
-                })
+                })}
+              </div>
             )}
           </motion.div>
         ) : (

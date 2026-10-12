@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   X,
   CheckSquare,
@@ -11,6 +11,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { GoogleTaskItem } from '../types/schedule';
+import { getMondayOfWeek, getSundayOfWeek } from '../utils/dateUtils';
 
 interface TasksPanelProps {
   isOpen: boolean;
@@ -44,6 +45,30 @@ export const TasksPanel: React.FC<TasksPanelProps> = ({
   const [newTitle, setNewTitle] = useState('');
   const [newDue, setNewDue] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deadlineFilter, setDeadlineFilter] = useState<'all' | 'week'>('all');
+
+  const today = useMemo(() => new Date(), []);
+  const monday = useMemo(() => getMondayOfWeek(today), [today]);
+  const sunday = useMemo(() => getSundayOfWeek(monday), [monday]);
+
+  const displayedTasks = useMemo(() => {
+    if (deadlineFilter === 'week') {
+      return tasks.filter((t) => {
+        if (!t.due) return false;
+        const d = new Date(t.due).getTime();
+        return d <= sunday.getTime();
+      });
+    }
+    return tasks;
+  }, [tasks, deadlineFilter, sunday]);
+
+  const weekTasksCount = useMemo(() => {
+    return tasks.filter((t) => {
+      if (!t.due) return false;
+      const d = new Date(t.due).getTime();
+      return d <= sunday.getTime();
+    }).length;
+  }, [tasks, sunday]);
 
   if (!isOpen) return null;
 
@@ -108,25 +133,52 @@ export const TasksPanel: React.FC<TasksPanelProps> = ({
           </div>
         ) : (
           <div className="p-5 space-y-4 overflow-y-auto flex-1">
-            {/* Task list filter */}
-            {taskLists.length > 0 && (
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-                <span className="text-zinc-400 text-[11px] font-medium shrink-0">Danh sách:</span>
-                {taskLists.map((tl) => (
-                  <button
-                    key={tl.id}
-                    onClick={() => onSelectTaskList(tl.id)}
-                    className={`px-3 py-1 rounded-lg font-medium shrink-0 transition ${
-                      selectedListId === tl.id
-                        ? 'bg-emerald-600 text-white shadow-2xs'
-                        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900'
-                    }`}
-                  >
-                    {tl.title}
-                  </button>
-                ))}
+            {/* Task list filter & Scope toggle */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1 text-xs">
+              {taskLists.length > 0 && (
+                <div className="flex items-center gap-2 overflow-x-auto pb-0.5 text-xs">
+                  <span className="text-zinc-400 text-[11px] font-medium shrink-0">Danh sách:</span>
+                  {taskLists.map((tl) => (
+                    <button
+                      key={tl.id}
+                      onClick={() => onSelectTaskList(tl.id)}
+                      className={`px-3 py-1 rounded-lg font-medium shrink-0 transition ${
+                        selectedListId === tl.id
+                          ? 'bg-emerald-600 text-white shadow-2xs font-semibold'
+                          : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900'
+                      }`}
+                    >
+                      {tl.title}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800/80 p-0.5 rounded-xl text-xs shrink-0 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setDeadlineFilter('all')}
+                  className={`px-2.5 py-1 rounded-lg transition font-medium cursor-pointer ${
+                    deadlineFilter === 'all'
+                      ? 'bg-white dark:bg-zinc-700 text-emerald-600 dark:text-emerald-300 font-bold shadow-2xs'
+                      : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
+                  }`}
+                >
+                  Tất cả ({tasks.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeadlineFilter('week')}
+                  className={`px-2.5 py-1 rounded-lg transition font-medium cursor-pointer ${
+                    deadlineFilter === 'week'
+                      ? 'bg-white dark:bg-zinc-700 text-emerald-600 dark:text-emerald-300 font-bold shadow-2xs'
+                      : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
+                  }`}
+                >
+                  Hạn tuần này ({weekTasksCount})
+                </button>
               </div>
-            )}
+            </div>
 
             {/* Quick add task input */}
             <form onSubmit={handleCreate} className="flex gap-2">
@@ -160,13 +212,15 @@ export const TasksPanel: React.FC<TasksPanelProps> = ({
                 <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
                 <span>Đang đồng bộ từ Google Tasks...</span>
               </div>
-            ) : tasks.length === 0 ? (
+            ) : displayedTasks.length === 0 ? (
               <div className="py-12 text-center text-zinc-400 text-xs">
-                Không có công việc nào còn dang dở trong danh sách này 🎉
+                {deadlineFilter === 'week'
+                  ? 'Không có nhiệm vụ nào có hạn trong tuần này!'
+                  : 'Không có công việc nào còn dang dở trong danh sách này 🎉'}
               </div>
             ) : (
               <div className="space-y-2">
-                {tasks.map((task) => {
+                {displayedTasks.map((task) => {
                   const dueDate = task.due ? new Date(task.due) : null;
                   const isOverdue = dueDate && dueDate.getTime() < Date.now();
 
