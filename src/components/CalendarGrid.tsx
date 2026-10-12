@@ -41,6 +41,7 @@ import { getThemeCategoryIcon, getThemeCategoryEmoji } from "../utils/themeIcons
 import { CuteCalendarFrame } from "./CuteCalendarFrame";
 import { CapybaraCalendarFrame } from "./CapybaraCalendarFrame";
 import { YohanCalendarFrame } from "./YohanCalendarFrame";
+import { MiniTimetableView } from "./MiniTimetableView";
 
 export type ZoomDensity = "compact" | "normal" | "spacious";
 
@@ -54,8 +55,8 @@ interface CalendarGridProps {
   onNewEventAtSlot: (startISO: string, endISO: string) => void;
   onResolveConflict: (conflict: ConflictItem) => void;
   onToggleComplete: (eventId: string) => void;
-  viewMode: "week" | "day" | "agenda";
-  onChangeViewMode: (mode: "week" | "day" | "agenda") => void;
+  viewMode: "week" | "mini" | "day" | "agenda";
+  onChangeViewMode: (mode: "week" | "mini" | "day" | "agenda") => void;
   onSyncGoogleCalendar: () => void;
   isSyncing: boolean;
   chronotype?: Chronotype;
@@ -599,13 +600,15 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
 
           {/* View Mode buttons with smooth motion layoutId */}
           <div className="flex items-center p-1 bg-zinc-100 dark:bg-zinc-800/90 rounded-xl text-xs relative">
-            {(["week", "day", "agenda"] as const).map((mode) => {
+            {(["week", "mini", "day", "agenda"] as const).map((mode) => {
               const label =
                 mode === "week"
                   ? "Tuần"
-                  : mode === "day"
-                    ? "Ngày"
-                    : "Danh sách";
+                  : mode === "mini"
+                    ? "🍱 TKB Mini"
+                    : mode === "day"
+                      ? "Ngày"
+                      : "Danh sách";
               const isActive = viewMode === mode;
               return (
                 <button
@@ -1173,6 +1176,25 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
                 })}
               </div>
             )}
+          </motion.div>
+        ) : viewMode === "mini" ? (
+          <motion.div
+            key="mini"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.15 }}
+          >
+            <MiniTimetableView
+              weekDays={weekDays}
+              events={filteredEvents}
+              conflicts={conflicts}
+              onSelectEvent={onSelectEvent}
+              onNewEventAtSlot={onNewEventAtSlot}
+              onToggleComplete={onToggleComplete}
+              onResolveConflict={onResolveConflict}
+              uiTheme={uiTheme}
+            />
           </motion.div>
         ) : (
           <motion.div

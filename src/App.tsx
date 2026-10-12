@@ -135,7 +135,7 @@ export default function App() {
 
   // Current Date & View
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
-  const [viewMode, setViewMode] = useState<"week" | "day" | "agenda">("week");
+  const [viewMode, setViewMode] = useState<"week" | "mini" | "day" | "agenda">("week");
 
   // Schedule Events — bắt đầu trống, không có dữ liệu mẫu
   const [events, setEvents] = useState<ScheduleItem[]>(() => {
