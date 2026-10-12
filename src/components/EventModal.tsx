@@ -26,6 +26,7 @@ import {
   TransitMode,
   UiTheme,
 } from "../types/schedule";
+import { getThemeCategoryIcon } from "../utils/themeIcons";
 
 interface EventModalProps {
   isOpen: boolean;
@@ -223,11 +224,11 @@ export const EventModal: React.FC<EventModalProps> = ({
             </label>
             <div className="grid grid-cols-5 gap-2">
               {[
-                { id: "study", label: "Học tập", img: "/illustrations/badge_study.jpg", vectorIcon: BookOpen, color: "text-violet-500 bg-violet-50 dark:bg-violet-950/40" },
-                { id: "work", label: "Công việc", img: "/illustrations/badge_work.jpg", vectorIcon: Briefcase, color: "text-sky-500 bg-sky-50 dark:bg-sky-950/40" },
-                { id: "meeting", label: "Cuộc họp", img: "/illustrations/badge_meeting.jpg", vectorIcon: Users, color: "text-emerald-500 bg-emerald-50 dark:bg-emerald-950/40" },
-                { id: "break", label: "Nghỉ ngơi", img: "/illustrations/badge_break.jpg", vectorIcon: Coffee, color: "text-amber-500 bg-amber-50 dark:bg-amber-950/40" },
-                { id: "personal", label: "Cá nhân", img: "/illustrations/badge_personal.jpg", vectorIcon: Heart, color: "text-pink-500 bg-pink-50 dark:bg-pink-950/40" },
+                { id: "study", label: "Học tập", img: getThemeCategoryIcon("study", uiTheme), vectorIcon: BookOpen, color: "text-violet-500 bg-violet-50 dark:bg-violet-950/40" },
+                { id: "work", label: "Công việc", img: getThemeCategoryIcon("work", uiTheme), vectorIcon: Briefcase, color: "text-sky-500 bg-sky-50 dark:bg-sky-950/40" },
+                { id: "meeting", label: "Cuộc họp", img: getThemeCategoryIcon("meeting", uiTheme), vectorIcon: Users, color: "text-emerald-500 bg-emerald-50 dark:bg-emerald-950/40" },
+                { id: "break", label: "Nghỉ ngơi", img: getThemeCategoryIcon("break", uiTheme), vectorIcon: Coffee, color: "text-amber-500 bg-amber-50 dark:bg-amber-950/40" },
+                { id: "personal", label: "Cá nhân", img: getThemeCategoryIcon("personal", uiTheme), vectorIcon: Heart, color: "text-pink-500 bg-pink-50 dark:bg-pink-950/40" },
               ].map((cat) => {
                 const isSelected = category === cat.id;
                 return (
@@ -236,19 +237,19 @@ export const EventModal: React.FC<EventModalProps> = ({
                     type="button"
                     onClick={() => setCategory(cat.id as EventCategory)}
                     className={`flex flex-col items-center justify-center p-2 rounded-2xl border text-center transition-all duration-200 cursor-pointer ${
-                      uiTheme === "cute" ? "squishy-pop" : ""
+                      uiTheme !== "default" ? "squishy-pop" : ""
                     } ${
                       isSelected
                         ? "border-indigo-500 dark:border-indigo-400 bg-indigo-50/80 dark:bg-indigo-950/60 ring-2 ring-indigo-500/50 shadow-sm scale-[1.03]"
                         : "border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/40 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 opacity-75 hover:opacity-100"
                     }`}
                   >
-                    {uiTheme === "cute" ? (
+                    {uiTheme !== "default" ? (
                       <img
                         src={cat.img}
                         alt={cat.label}
-                        className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-cover shadow-2xs border border-white/90 dark:border-zinc-700/80 mb-1.5 transition-transform ${
-                          isSelected ? "scale-110 shadow-xs" : ""
+                        className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-contain bg-white/70 dark:bg-zinc-800/70 p-0.5 shadow-2xs border border-white/90 dark:border-zinc-700/80 mb-1.5 transition-transform ${
+                          isSelected ? "scale-110 shadow-xs ring-1 ring-indigo-400" : ""
                         }`}
                       />
                     ) : (
@@ -324,9 +325,17 @@ export const EventModal: React.FC<EventModalProps> = ({
           <div className="p-3 rounded-2xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/60 space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300">
-                  <Car className="w-4 h-4" />
-                </div>
+                {uiTheme !== "default" ? (
+                  <img
+                    src={getThemeCategoryIcon("travel", uiTheme)}
+                    alt="travel"
+                    className="w-7 h-7 rounded-lg object-contain bg-white/70 dark:bg-zinc-800/70 p-0.5 shadow-2xs border border-amber-300 dark:border-amber-700 shrink-0 select-none"
+                  />
+                ) : (
+                  <div className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300">
+                    <Car className="w-4 h-4" />
+                  </div>
+                )}
                 <div>
                   <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 block">
                     Đệm di chuyển & Chuẩn bị

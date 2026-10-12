@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { ScheduleItem, ConflictItem, Chronotype, UiTheme } from "../types/schedule";
 import { formatWeekRange, getSundayOfWeek } from "../utils/dateUtils";
+import { getThemeCategoryIcon, getThemeCategoryEmoji } from "../utils/themeIcons";
 import { CuteCalendarFrame } from "./CuteCalendarFrame";
 import { CapybaraCalendarFrame } from "./CapybaraCalendarFrame";
 import { YohanCalendarFrame } from "./YohanCalendarFrame";
@@ -348,8 +349,8 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
       text: "text-violet-950 dark:text-violet-100",
       dot: "bg-gradient-to-r from-violet-500 to-indigo-500 shadow-xs shadow-violet-500/50",
       shadow: "hover:shadow-lg hover:shadow-violet-400/25 dark:hover:shadow-violet-900/30",
-      badge: "🎒",
-      iconImg: "/illustrations/badge_study.jpg",
+      badge: getThemeCategoryEmoji("study", uiTheme),
+      iconImg: getThemeCategoryIcon("study", uiTheme),
       vectorIcon: BookOpen,
     },
     work: {
@@ -358,8 +359,8 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
       text: "text-blue-950 dark:text-blue-100",
       dot: "bg-gradient-to-r from-sky-500 to-cyan-500 shadow-xs shadow-blue-500/50",
       shadow: "hover:shadow-lg hover:shadow-sky-400/25 dark:hover:shadow-sky-900/30",
-      badge: "💻",
-      iconImg: "/illustrations/badge_work.jpg",
+      badge: getThemeCategoryEmoji("work", uiTheme),
+      iconImg: getThemeCategoryIcon("work", uiTheme),
       vectorIcon: Briefcase,
     },
     meeting: {
@@ -368,8 +369,8 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
       text: "text-emerald-950 dark:text-emerald-100",
       dot: "bg-gradient-to-r from-emerald-500 to-teal-400 shadow-xs shadow-emerald-500/50",
       shadow: "hover:shadow-lg hover:shadow-emerald-400/25 dark:hover:shadow-emerald-900/30",
-      badge: "💬",
-      iconImg: "/illustrations/badge_meeting.jpg",
+      badge: getThemeCategoryEmoji("meeting", uiTheme),
+      iconImg: getThemeCategoryIcon("meeting", uiTheme),
       vectorIcon: Users,
     },
     break: {
@@ -378,8 +379,8 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
       text: "text-amber-950 dark:text-amber-100",
       dot: "bg-gradient-to-r from-amber-500 to-orange-400 shadow-xs shadow-amber-500/50",
       shadow: "hover:shadow-lg hover:shadow-amber-400/25 dark:hover:shadow-amber-900/30",
-      badge: "🧋",
-      iconImg: "/illustrations/badge_break.jpg",
+      badge: getThemeCategoryEmoji("break", uiTheme),
+      iconImg: getThemeCategoryIcon("break", uiTheme),
       vectorIcon: Coffee,
     },
     personal: {
@@ -388,8 +389,8 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
       text: "text-rose-950 dark:text-rose-100",
       dot: "bg-gradient-to-r from-pink-500 to-rose-400 shadow-xs shadow-rose-500/50",
       shadow: "hover:shadow-lg hover:shadow-pink-400/25 dark:hover:shadow-pink-900/30",
-      badge: "🎁",
-      iconImg: "/illustrations/badge_personal.jpg",
+      badge: getThemeCategoryEmoji("personal", uiTheme),
+      iconImg: getThemeCategoryIcon("personal", uiTheme),
       vectorIcon: Heart,
     },
     travel: {
@@ -398,8 +399,8 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
       text: "text-teal-950 dark:text-teal-100",
       dot: "bg-gradient-to-r from-teal-500 to-emerald-400 shadow-xs shadow-teal-500/50",
       shadow: "hover:shadow-lg hover:shadow-teal-400/25 dark:hover:shadow-teal-900/30",
-      badge: "🛵",
-      iconImg: "/illustrations/badge_travel.jpg",
+      badge: getThemeCategoryEmoji("travel", uiTheme),
+      iconImg: getThemeCategoryIcon("travel", uiTheme),
       vectorIcon: Navigation,
     },
   };
@@ -408,13 +409,13 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("all");
 
   const categoryFilters = [
-    { id: "all", label: "Tất cả", iconImg: null, emoji: "✨", vectorIcon: Sparkles },
-    { id: "study", label: "Học tập", iconImg: "/illustrations/badge_study.jpg", emoji: "🎒", vectorIcon: BookOpen },
-    { id: "work", label: "Công việc", iconImg: "/illustrations/badge_work.jpg", emoji: "💻", vectorIcon: Briefcase },
-    { id: "meeting", label: "Họp nhóm", iconImg: "/illustrations/badge_meeting.jpg", emoji: "💬", vectorIcon: Users },
-    { id: "break", label: "Nghỉ ngơi", iconImg: "/illustrations/badge_break.jpg", emoji: "🧋", vectorIcon: Coffee },
-    { id: "personal", label: "Cá nhân", iconImg: "/illustrations/badge_personal.jpg", emoji: "🎁", vectorIcon: Heart },
-    { id: "travel", label: "Di chuyển", iconImg: "/illustrations/badge_travel.jpg", emoji: "🛵", vectorIcon: Navigation },
+    { id: "all", label: "Tất cả", iconImg: getThemeCategoryIcon("all", uiTheme), emoji: getThemeCategoryEmoji("all", uiTheme), vectorIcon: Sparkles },
+    { id: "study", label: "Học tập", iconImg: getThemeCategoryIcon("study", uiTheme), emoji: getThemeCategoryEmoji("study", uiTheme), vectorIcon: BookOpen },
+    { id: "work", label: "Công việc", iconImg: getThemeCategoryIcon("work", uiTheme), emoji: getThemeCategoryEmoji("work", uiTheme), vectorIcon: Briefcase },
+    { id: "meeting", label: "Họp nhóm", iconImg: getThemeCategoryIcon("meeting", uiTheme), emoji: getThemeCategoryEmoji("meeting", uiTheme), vectorIcon: Users },
+    { id: "break", label: "Nghỉ ngơi", iconImg: getThemeCategoryIcon("break", uiTheme), emoji: getThemeCategoryEmoji("break", uiTheme), vectorIcon: Coffee },
+    { id: "personal", label: "Cá nhân", iconImg: getThemeCategoryIcon("personal", uiTheme), emoji: getThemeCategoryEmoji("personal", uiTheme), vectorIcon: Heart },
+    { id: "travel", label: "Di chuyển", iconImg: getThemeCategoryIcon("travel", uiTheme), emoji: getThemeCategoryEmoji("travel", uiTheme), vectorIcon: Navigation },
   ];
 
   const weekEvents = React.useMemo(() => {
@@ -684,12 +685,12 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
                     : "bg-zinc-100/90 hover:bg-zinc-200/90 dark:bg-zinc-800/90 dark:hover:bg-zinc-700/90 text-zinc-700 dark:text-zinc-300 border border-zinc-200/70 dark:border-zinc-700/70"
                 }`}
               >
-                {uiTheme === "cute" ? (
+                {uiTheme !== "default" ? (
                   cat.iconImg ? (
                     <img
                       src={cat.iconImg}
                       alt={cat.label}
-                      className="w-5 h-5 rounded-lg object-cover shadow-2xs border border-white/80 dark:border-zinc-700/80 shrink-0"
+                      className="w-5.5 h-5.5 rounded-lg object-contain bg-white/70 dark:bg-zinc-800/70 p-0.5 shadow-2xs border border-white/80 dark:border-zinc-700/80 shrink-0 select-none"
                     />
                   ) : (
                     <span className="text-xs">{cat.emoji}</span>
@@ -929,11 +930,11 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
                                 className="py-2.5 px-3 rounded-xl border border-dashed border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/30 flex items-center justify-between gap-3 text-xs my-1 cursor-pointer hover:bg-amber-100/60 transition"
                               >
                                 <div className="flex items-center gap-2.5">
-                                  {uiTheme === "cute" ? (
+                                  {uiTheme !== "default" ? (
                                     <img
-                                      src="/illustrations/badge_travel.jpg"
+                                      src={getThemeCategoryIcon("travel", uiTheme)}
                                       alt="travel"
-                                      className="w-8 h-8 rounded-xl object-cover shadow-2xs border border-amber-300 dark:border-amber-700 shrink-0"
+                                      className="w-8 h-8 rounded-xl object-contain bg-white/70 dark:bg-zinc-800/70 p-0.5 shadow-2xs border border-amber-300 dark:border-amber-700 shrink-0 select-none"
                                     />
                                   ) : (
                                     <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 shrink-0">
@@ -998,11 +999,11 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
 
                                 <div>
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    {uiTheme === "cute" ? (
+                                    {uiTheme !== "default" ? (
                                       <img
                                         src={style.iconImg}
                                         alt=""
-                                        className="w-7 h-7 rounded-xl object-cover shadow-xs border border-white/80 dark:border-zinc-700/80 shrink-0 select-none"
+                                        className="w-7 h-7 rounded-xl object-contain bg-white/70 dark:bg-zinc-800/70 p-0.5 shadow-xs border border-white/80 dark:border-zinc-700/80 shrink-0 select-none"
                                       />
                                     ) : (
                                       <div className={`p-1.5 rounded-lg ${style.bg} ${style.text} ${style.border} border shrink-0`}>
@@ -1438,13 +1439,13 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
                                   >
                                     <div className="flex items-center justify-between gap-1">
                                       <div className="flex items-center gap-1.5 font-bold truncate text-[11px]">
-                                        {uiTheme === "cute" ? (
+                                        {uiTheme !== "default" ? (
                                           <img
-                                            src="/illustrations/badge_travel.jpg"
+                                            src={getThemeCategoryIcon("travel", uiTheme)}
                                             alt="travel"
                                             className={`${
                                               isCompact ? "w-4 h-4 rounded-md" : "w-5.5 h-5.5 rounded-lg"
-                                            } object-cover shadow-2xs border border-white/80 dark:border-zinc-700/80 shrink-0`}
+                                            } object-contain bg-white/70 dark:bg-zinc-800/70 p-0.5 shadow-2xs border border-white/80 dark:border-zinc-700/80 shrink-0 select-none`}
                                           />
                                         ) : (
                                           <Navigation className={`${isCompact ? "w-3 h-3" : "w-3.5 h-3.5"} text-amber-600 dark:text-amber-400 shrink-0`} />
@@ -1510,13 +1511,13 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
                                 >
                                   <div className="flex items-start justify-between gap-1">
                                     <div className="flex items-center gap-1.5 font-bold truncate leading-tight flex-1">
-                                      {uiTheme === "cute" ? (
+                                      {uiTheme !== "default" ? (
                                         <img
                                           src={style.iconImg}
                                           alt={ev.category}
                                           className={`${
                                             isCompact ? "w-4 h-4 rounded-md" : "w-5.5 h-5.5 rounded-lg"
-                                          } object-cover shadow-2xs border border-white/90 dark:border-zinc-700/80 shrink-0 select-none group-hover:scale-110 transition-transform`}
+                                          } object-contain bg-white/70 dark:bg-zinc-800/70 p-0.5 shadow-2xs border border-white/90 dark:border-zinc-700/80 shrink-0 select-none group-hover:scale-110 transition-transform`}
                                         />
                                       ) : (
                                         <style.vectorIcon className={`${isCompact ? "w-3 h-3" : "w-3.5 h-3.5"} shrink-0`} />
@@ -1697,12 +1698,12 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
         >
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
-              {uiTheme === "cute" ? (
+              {uiTheme !== "default" ? (
                 categoryStyles[hoveredEvent.event.category]?.iconImg && (
                   <img
                     src={categoryStyles[hoveredEvent.event.category].iconImg}
                     alt=""
-                    className="w-7 h-7 rounded-xl object-cover shadow-xs border border-white/80 dark:border-zinc-700/80 shrink-0"
+                    className="w-7 h-7 rounded-xl object-contain bg-white/70 dark:bg-zinc-800/70 p-0.5 shadow-xs border border-white/80 dark:border-zinc-700/80 shrink-0 select-none"
                   />
                 )
               ) : (

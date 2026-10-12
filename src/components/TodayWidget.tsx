@@ -24,6 +24,7 @@ import {
   isEventInWeek,
   formatWeekRange,
 } from "../utils/dateUtils";
+import { getThemeCategoryIcon } from "../utils/themeIcons";
 
 interface TodayWidgetProps {
   events: ScheduleItem[];
@@ -195,21 +196,11 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
             </div>
 
             <div className="font-bold text-zinc-900 dark:text-zinc-100 text-sm mt-1.5 truncate flex items-center gap-2">
-              {uiTheme === "cute" ? (
+              {uiTheme !== "default" ? (
                 <img
-                  src={
-                    nextEvent.category === "study"
-                      ? "/illustrations/badge_study.jpg"
-                      : nextEvent.category === "work"
-                        ? "/illustrations/badge_work.jpg"
-                        : nextEvent.category === "meeting"
-                          ? "/illustrations/badge_meeting.jpg"
-                          : nextEvent.category === "break"
-                            ? "/illustrations/badge_break.jpg"
-                            : "/illustrations/badge_personal.jpg"
-                  }
+                  src={getThemeCategoryIcon(nextEvent.category, uiTheme)}
                   alt=""
-                  className="w-7 h-7 rounded-xl object-cover shadow-2xs border border-white/80 dark:border-zinc-700/80 shrink-0"
+                  className="w-7 h-7 rounded-xl object-contain bg-white/70 dark:bg-zinc-800/70 p-0.5 shadow-2xs border border-white/80 dark:border-zinc-700/80 shrink-0 select-none"
                 />
               ) : (
                 <div className="p-1.5 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 shrink-0">
@@ -312,11 +303,11 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
                   className="p-2 rounded-2xl border border-dashed border-amber-300 dark:border-amber-700 bg-amber-50/70 dark:bg-amber-950/40 text-xs flex items-center justify-between gap-2 transition hover:bg-amber-100/70 dark:hover:bg-amber-900/40 cursor-pointer squishy-pop"
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    {uiTheme === "cute" ? (
+                    {uiTheme !== "default" ? (
                       <img
-                        src="/illustrations/badge_travel.jpg"
+                        src={getThemeCategoryIcon("travel", uiTheme)}
                         alt="travel"
-                        className="w-6 h-6 rounded-lg object-cover shadow-2xs border border-white/80 dark:border-zinc-700/80 shrink-0"
+                        className="w-6 h-6 rounded-lg object-contain bg-white/70 dark:bg-zinc-800/70 p-0.5 shadow-2xs border border-white/80 dark:border-zinc-700/80 shrink-0 select-none"
                       />
                     ) : (
                       <Navigation className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
@@ -346,17 +337,6 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
               );
             }
 
-            const badgeImg =
-              ev.category === "study"
-                ? "/illustrations/badge_study.jpg"
-                : ev.category === "work"
-                  ? "/illustrations/badge_work.jpg"
-                  : ev.category === "meeting"
-                    ? "/illustrations/badge_meeting.jpg"
-                    : ev.category === "break"
-                      ? "/illustrations/badge_break.jpg"
-                      : "/illustrations/badge_personal.jpg";
-
             return (
               <div
                 key={ev.id}
@@ -381,11 +361,11 @@ export const TodayWidget: React.FC<TodayWidgetProps> = ({
                   >
                     <CheckCircle className="w-4 h-4" />
                   </button>
-                  {uiTheme === "cute" ? (
+                  {uiTheme !== "default" ? (
                     <img
-                      src={badgeImg}
+                      src={getThemeCategoryIcon(ev.category, uiTheme)}
                       alt=""
-                      className="w-6 h-6 rounded-lg object-cover shadow-2xs border border-white/70 dark:border-zinc-700/70 shrink-0"
+                      className="w-6 h-6 rounded-lg object-contain bg-white/70 dark:bg-zinc-800/70 p-0.5 shadow-2xs border border-white/70 dark:border-zinc-700/70 shrink-0 select-none"
                     />
                   ) : (
                     <div className="p-1 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 shrink-0">
