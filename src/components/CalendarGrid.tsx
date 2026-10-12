@@ -30,6 +30,10 @@ import {
   ZoomOut,
   Maximize2,
   Minimize2,
+  PanelRightClose,
+  PanelRightOpen,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { ScheduleItem, ConflictItem, Chronotype, UiTheme } from "../types/schedule";
 import { formatWeekRange, getSundayOfWeek } from "../utils/dateUtils";
@@ -66,6 +70,8 @@ interface CalendarGridProps {
     newEndTime: string,
   ) => void;
   uiTheme?: UiTheme;
+  isSidebarOpen?: boolean;
+  onToggleSidebar?: () => void;
 }
 
 export const CalendarGrid: React.FC<CalendarGridProps> = ({
@@ -90,6 +96,8 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
   onOpenRescheduleForEvent,
   onUpdateEventTimes,
   uiTheme = "cute",
+  isSidebarOpen = true,
+  onToggleSidebar,
 }) => {
   // Realtime clock for Current Time Indicator
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
@@ -102,13 +110,16 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
   const [zoomLevel, setZoomLevel] = useState<ZoomDensity>(() => {
     return (
       (localStorage.getItem("smart_schedule_zoom_level") as ZoomDensity) ||
-      "normal"
+      "compact"
     );
   });
   const handleSetZoomLevel = (lvl: ZoomDensity) => {
     setZoomLevel(lvl);
     localStorage.setItem("smart_schedule_zoom_level", lvl);
   };
+
+  // State to manually expand/collapse night hours (00:00 - 06:00) in compact fit mode
+  const [showNightHours, setShowNightHours] = useState(false);
 
   // Fullscreen state
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -188,25 +199,20 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
   // Reference for time grid container to support smooth auto-scroll to current time
   const timeGridRef = useRef<HTMLDivElement>(null);
 
-  // Hours: 00:00 to 23:00 (Hiển thị đầy đủ 24 giờ cả ngày và đêm)
-  const START_HOUR = 0;
-  const END_HOUR = 23;
-  const hours = Array.from(
-    { length: END_HOUR - START_HOUR + 1 },
-    (_, i) => START_HOUR + i,
-  );
-
-  // Tự động cuộn lưới lịch đến giờ hiện tại (hoặc 7h sáng nếu sáng sớm) để người dùng xem ngay giờ ban ngày
+  // Auto-scroll logic: In 24h scroll mode, scroll to daytime (7h); in compact mode, stay at top (0h/7h)
   useEffect(() => {
     if (timeGridRef.current) {
-      const now = new Date();
-      const currentH = now.getHours();
-      const targetHour = currentH >= 7 ? Math.max(0, currentH - 1) : 7;
-      const rowHeight =
-        zoomLevel === "compact" ? 38 : zoomLevel === "spacious" ? 72 : 54;
-      timeGridRef.current.scrollTop = targetHour * rowHeight;
+      if (zoomLevel === "compact") {
+        timeGridRef.current.scrollTop = 0;
+      } else {
+        const now = new Date();
+        const currentH = now.getHours();
+        const targetHour = currentH >= 7 ? Math.max(0, currentH - 1) : 7;
+        const rowHeight = zoomLevel === "spacious" ? 72 : 54;
+        timeGridRef.current.scrollTop = targetHour * rowHeight;
+      }
     }
-  }, [viewMode, currentDate]);
+  }, [viewMode, currentDate, zoomLevel, showNightHours]);
 
   // Check if a date is today
   const isToday = (d: Date) => {
@@ -448,6 +454,34 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
     return events.filter((e) => e.category === selectedCategoryFilter && !e.isTravelBuffer);
   }, [events, selectedCategoryFilter]);
 
+  // Check if there are any events scheduled in early morning (00:00 - 06:59)
+  const hasEarlyMorningEvents = React.useMemo(() => {
+    return filteredEvents.some((e) => {
+      const s = new Date(e.startTime);
+      const end = new Date(e.endTime);
+      if (s.getHours() >= 7) return false;
+      if (viewMode === "day") {
+        const localDateStr = (d: Date) =>
+          `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        return localDateStr(s) === localDateStr(currentDate);
+      } else {
+        return s.getTime() <= weekEnd.getTime() && end.getTime() >= weekStart.getTime();
+      }
+    });
+  }, [filteredEvents, viewMode, currentDate, weekStart, weekEnd]);
+
+  // Hours logic: In "compact" mode (Vừa màn hình), collapse inactive night hours (00:00 - 06:00) unless user expands or has events
+  const isFitScreenMode = zoomLevel === "compact";
+  const shouldCollapseNight = isFitScreenMode && !showNightHours && !hasEarlyMorningEvents;
+  const startHour = shouldCollapseNight ? 7 : 0;
+  const endHour = 23;
+  const hours = React.useMemo(() => {
+    return Array.from(
+      { length: endHour - startHour + 1 },
+      (_, i) => startHour + i,
+    );
+  }, [startHour, endHour]);
+
   const agendaEvents = React.useMemo(() => {
     let list = filteredEvents;
     if (agendaScope === "week") {
@@ -600,43 +634,45 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
             })}
           </div>
 
-          {/* Zoom Density Selector */}
-          <div className="flex items-center p-1 bg-zinc-100 dark:bg-zinc-800/90 rounded-xl text-xs gap-0.5">
+          {/* Screen Fit & 24h Density Selector */}
+          <div className="flex items-center p-0.5 bg-zinc-100 dark:bg-zinc-800/90 rounded-xl text-xs gap-0.5">
             <button
               type="button"
               onClick={() => handleSetZoomLevel("compact")}
-              title="Thu nhỏ (Gọn vừa khít màn hình, không cần cuộn)"
-              className={`px-2 py-1 rounded-lg font-medium transition-all cursor-pointer flex items-center gap-1 ${
+              title="Vừa trọn màn hình: Hiển thị 7h-22h, không cần cuộn chuột"
+              className={`px-2 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
                 zoomLevel === "compact"
-                  ? "bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-300 font-bold shadow-xs scale-102"
+                  ? "bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-300 shadow-xs"
                   : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
               }`}
             >
-              <ZoomOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Gọn</span>
+              <span>☀️</span>
+              <span className="hidden sm:inline">Vừa màn hình</span>
+              <span className="sm:hidden text-[10px]">Vừa</span>
             </button>
 
             <button
               type="button"
               onClick={() => handleSetZoomLevel("normal")}
-              title="Kích thước tiêu chuẩn (100%)"
+              title="Hiển thị trọn vẹn 24 giờ cả ngày và đêm (Cuộn chuột)"
               className={`px-2 py-1 rounded-lg font-medium transition-all cursor-pointer flex items-center gap-1 ${
                 zoomLevel === "normal"
-                  ? "bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-300 font-bold shadow-xs scale-102"
+                  ? "bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-300 font-bold shadow-xs"
                   : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
               }`}
             >
-              <span className="hidden sm:inline">Vừa</span>
-              <span className="sm:hidden text-[10px]">100%</span>
+              <span>🌙</span>
+              <span className="hidden sm:inline">24 giờ</span>
+              <span className="sm:hidden text-[10px]">24h</span>
             </button>
 
             <button
               type="button"
               onClick={() => handleSetZoomLevel("spacious")}
-              title="Phóng to (Chi tiết rộng rãi)"
+              title="Phóng to chi tiết (Rộng rãi)"
               className={`px-2 py-1 rounded-lg font-medium transition-all cursor-pointer flex items-center gap-1 ${
                 zoomLevel === "spacious"
-                  ? "bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-300 font-bold shadow-xs scale-102"
+                  ? "bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-300 font-bold shadow-xs"
                   : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
               }`}
             >
@@ -644,6 +680,33 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
               <span className="hidden sm:inline">Rộng</span>
             </button>
           </div>
+
+          {/* Toggle Sidebar Button */}
+          {onToggleSidebar && (
+            <button
+              type="button"
+              onClick={onToggleSidebar}
+              title={
+                isSidebarOpen
+                  ? "Ẩn bảng công việc bên phải (Lịch chiếm trọn màn hình)"
+                  : "Mở bảng công việc bên phải"
+              }
+              className={`p-1.5 rounded-xl transition cursor-pointer flex items-center gap-1 text-xs font-semibold ${
+                isSidebarOpen
+                  ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/70 border border-zinc-200/80 dark:border-zinc-700/80"
+                  : "bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 ring-1 ring-indigo-500/30"
+              }`}
+            >
+              {isSidebarOpen ? (
+                <PanelRightClose className="w-4 h-4" />
+              ) : (
+                <PanelRightOpen className="w-4 h-4" />
+              )}
+              <span className="hidden xl:inline">
+                {isSidebarOpen ? "Thu gọn widget" : "Mở widget"}
+              </span>
+            </button>
+          )}
 
           {/* Fullscreen Button */}
           <button
@@ -1207,12 +1270,37 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
                 isFullscreen
                   ? "max-h-[calc(100vh-210px)] overflow-y-auto"
                   : zoomLevel === "compact"
-                    ? "max-h-[640px] overflow-y-auto"
+                    ? "max-h-none overflow-y-auto"
                     : zoomLevel === "spacious"
                       ? "max-h-[780px] overflow-y-auto"
                       : "max-h-[620px] overflow-y-auto"
               }`}
             >
+              {/* Foldable Night Hours Bar in Compact Screen-Fit mode */}
+              {shouldCollapseNight && (
+                <button
+                  type="button"
+                  onClick={() => setShowNightHours(true)}
+                  className="w-full py-1.5 px-3 bg-zinc-50/90 hover:bg-indigo-50/70 dark:bg-zinc-800/40 dark:hover:bg-indigo-950/40 border-b border-zinc-200/60 dark:border-zinc-800/80 text-[10px] font-semibold text-zinc-500 hover:text-indigo-600 dark:hover:text-indigo-300 transition flex items-center justify-center gap-1.5 cursor-pointer squishy-pop"
+                  title="Nhấn để mở 6 khung giờ đêm và sáng sớm (00:00 - 06:00)"
+                >
+                  <span>🌙</span>
+                  <span>00:00 - 06:00 (Giờ đêm & Sáng sớm)</span>
+                  <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-bold ml-1">✦ Nhấn để mở rộng</span>
+                </button>
+              )}
+
+              {isFitScreenMode && (showNightHours || hasEarlyMorningEvents) && (
+                <button
+                  type="button"
+                  onClick={() => setShowNightHours(false)}
+                  className="w-full py-1 px-3 bg-zinc-100/70 hover:bg-zinc-200/70 dark:bg-zinc-800/60 text-[10px] font-medium text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 border-b border-zinc-200/60 dark:border-zinc-700/60 transition flex items-center justify-center gap-1 cursor-pointer"
+                  title="Thu gọn lại khung giờ đêm để vừa khít màn hình"
+                >
+                  <span>▲ Thu gọn giờ đêm (00:00 - 06:00)</span>
+                </button>
+              )}
+
               {hours.map((hour) => {
                 const hourFormatted = `${hour.toString().padStart(2, "0")}:00`;
                 const displayDays =
@@ -1221,7 +1309,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
 
                 const rowMinHeight =
                   zoomLevel === "compact"
-                    ? "min-h-[38px]"
+                    ? "min-h-[28px] sm:min-h-[30px]"
                     : zoomLevel === "spacious"
                       ? "min-h-[72px]"
                       : "min-h-[54px]";

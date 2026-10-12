@@ -49,7 +49,7 @@ export const NaturalLanguageInput: React.FC<NaturalLanguageInputProps> = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isExpanded, setIsExpanded] = useState<boolean>(() => {
     const saved = localStorage.getItem("smart_schedule_ai_input_expanded");
-    return saved !== null ? saved === "true" : true;
+    return saved !== null ? saved === "true" : false;
   });
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -209,7 +209,6 @@ export const NaturalLanguageInput: React.FC<NaturalLanguageInputProps> = ({
               type="text"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              onFocus={() => toggleExpanded(true)}
               placeholder={
                 uiTheme === "yohan"
                   ? "Nhờ Go Yohan quản lý lịch trình giúp bạn (VD: Uống cà phê 9h, làm việc 14h)... ☕"

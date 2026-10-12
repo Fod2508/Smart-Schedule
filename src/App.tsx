@@ -221,6 +221,18 @@ export default function App() {
     saveUserProfile(updated);
   };
 
+  // Right sidebar collapsible state
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(() => {
+    return localStorage.getItem("smart_schedule_sidebar_open") !== "false";
+  });
+  const toggleSidebar = () => {
+    setIsSidebarOpen((prev) => {
+      const next = !prev;
+      localStorage.setItem("smart_schedule_sidebar_open", String(next));
+      return next;
+    });
+  };
+
   // Command Palette (Ctrl+K) state
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 
@@ -1287,7 +1299,7 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-4 lg:px-6 py-2.5 sm:py-3 space-y-3">
         {/* Gemini AI Natural Language Input */}
         <NaturalLanguageInput
           uiTheme={uiTheme}
@@ -1301,10 +1313,10 @@ export default function App() {
           onOpenOcrScanner={() => setIsOcrOpen(true)}
         />
 
-        {/* Layout Grid: Today Widget (desktop sidebar) + Timetable Calendar Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
-          {/* Calendar Grid (3 columns on desktop) */}
-          <div className="lg:col-span-3 space-y-6">
+        {/* Layout Grid: Timetable Calendar Grid & Collapsible Today Widget */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-start">
+          {/* Calendar Grid (takes 9 columns when sidebar open, full 12 columns when closed) */}
+          <div className={`${isSidebarOpen ? "lg:col-span-9" : "lg:col-span-12"} space-y-3 transition-all duration-300`}>
             <CalendarGrid
               uiTheme={uiTheme}
               currentDate={currentDate}
@@ -1350,62 +1362,39 @@ export default function App() {
                 setIsRescheduleOpen(true);
               }}
               onUpdateEventTimes={handleUpdateEventTimes}
+              isSidebarOpen={isSidebarOpen}
+              onToggleSidebar={toggleSidebar}
             />
           </div>
 
-          {/* Right Sidebar: Today's Schedule & Focus Widget */}
-          <div className="lg:col-span-1 space-y-4">
-            <TodayWidget
-              uiTheme={uiTheme}
-              events={events}
-              onSelectEvent={(ev) => {
-                setSelectedEvent(ev);
-                setIsEventModalOpen(true);
-              }}
-              onOpenPomodoroForEvent={(ev) => {
-                setPomodoroEvent(ev);
-                setIsPomodoroOpen(true);
-              }}
-              onToggleComplete={handleToggleComplete}
-              onOpenReschedule={(eventId) => {
-                setReschedulePreselectedId(eventId || null);
-                setIsRescheduleOpen(true);
-              }}
-              onOpenTravelBuffer={() => setIsTravelBufferOpen(true)}
-            />
-
-            {/* Quick Actions Card — gọn */}
-            <div className={`bg-white dark:bg-zinc-900 ${uiTheme === "cute" ? "rounded-3xl" : "rounded-2xl"} p-4 shadow-sm border border-zinc-200/90 dark:border-zinc-800 text-xs`}>
-              <span className="font-semibold text-zinc-500 dark:text-zinc-400 block mb-2 uppercase tracking-wider text-[10px]">
-                Google Workspace
-              </span>
-              <div className="space-y-1">
-                <button
-                  onClick={() => setIsTasksOpen(true)}
-                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 transition flex items-center justify-between"
-                >
-                  <span>Tasks</span>
-                  <span className="text-[10px] text-zinc-400">
-                    {tasks.length} việc
-                  </span>
-                </button>
-                <button
-                  onClick={() => setIsSheetsOpen(true)}
-                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 transition flex items-center justify-between"
-                >
-                  <span>Sheets</span>
-                  <span className="text-[10px] text-zinc-400">Xuất/Nhập</span>
-                </button>
-                <button
-                  onClick={() => setIsGmailOpen(true)}
-                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 transition flex items-center justify-between"
-                >
-                  <span>Gmail Digest</span>
-                  <span className="text-[10px] text-zinc-400">Gửi mail</span>
-                </button>
-              </div>
+          {/* Right Sidebar: Today's Schedule & Focus Widget with Integrated Google Workspace */}
+          {isSidebarOpen && (
+            <div className="lg:col-span-3 space-y-3 transition-all duration-300">
+              <TodayWidget
+                uiTheme={uiTheme}
+                events={events}
+                onSelectEvent={(ev) => {
+                  setSelectedEvent(ev);
+                  setIsEventModalOpen(true);
+                }}
+                onOpenPomodoroForEvent={(ev) => {
+                  setPomodoroEvent(ev);
+                  setIsPomodoroOpen(true);
+                }}
+                onToggleComplete={handleToggleComplete}
+                onOpenReschedule={(eventId) => {
+                  setReschedulePreselectedId(eventId || null);
+                  setIsRescheduleOpen(true);
+                }}
+                onOpenTravelBuffer={() => setIsTravelBufferOpen(true)}
+                tasksCount={tasks.length}
+                onOpenTasks={() => setIsTasksOpen(true)}
+                onOpenSheets={() => setIsSheetsOpen(true)}
+                onOpenGmail={() => setIsGmailOpen(true)}
+                onCloseWidget={toggleSidebar}
+              />
             </div>
-          </div>
+          )}
         </div>
       </main>
 
